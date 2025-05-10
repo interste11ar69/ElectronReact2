@@ -127,10 +127,10 @@
    ipcMain.handle('delete-item', async (event, id) => {
        try {
            return await db.deleteItem(id);
-       } catch (error) {
+    } catch (error) {
            console.error('Error deleting item:', error);
            throw error;
-       }
+    }
    });
 
    // --- Authentication IPC Handlers ---
@@ -153,10 +153,10 @@
    ipcMain.handle('login', async (event, credentials) => {
        try {
            return await db.login(credentials.username, credentials.password);
-       } catch (error) {
+     } catch (error) {
            console.error('Error during login:', error);
            throw error;
-       }
+     }
    });
 
    ipcMain.handle('logout', async () => {
@@ -184,17 +184,17 @@
    ipcMain.handle('get-inventory-summary', async () => {
        try {
            return await db.getInventorySummary();
-       } catch (error) {
+     } catch (error) {
            console.error('Error getting inventory summary:', error);
            throw error;
-       }
+     }
    });
 
    // REPLACE the existing 'get-low-stock-items' handler's try...catch block with this:
    ipcMain.handle('get-low-stock-items', async (event, threshold) => {
        try {
            return await db.getLowStockItems(threshold);
-       } catch (error) {
+     } catch (error) {
            console.error('Error getting low stock items:', error);
            throw error;
        }

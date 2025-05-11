@@ -1,0 +1,45 @@
+bioskin
+├── docs
+│   ├── codeDump.txt
+│   └── directoryTree.txt
+├── public
+│   ├── index.html
+│   ├── logo.png
+│   ├── main.js
+│   ├── manifest.json
+│   ├── preload.js
+│   └── robots.txt
+├── src
+│   ├── assets
+│   │   ├── background.jpg
+│   │   └── logo.png
+│   ├── AnalyticsPage.js
+│   ├── App.js
+│   ├── BulkUpdatePage.js
+│   ├── DashboardPage.css
+│   ├── DashboardPage.js
+│   ├── index.css
+│   ├── index.js
+│   ├── InitialImportPage.js
+│   ├── ItemList.js
+│   ├── ItemManagementPage.css
+│   ├── ItemManagementPage.js
+│   ├── Layout.css
+│   ├── Layout.js
+│   ├── LoginPage.css
+│   ├── LoginPage.js
+│   ├── ProductFormPage.css
+│   ├── ProductFormPage.js
+│   ├── Sidebar.css
+│   ├── Sidebar.js
+│   ├── SuccessModal.css
+│   ├── SuccessModal.js
+│   └── supabaseClient.js
+├── tools
+│   ├── generateCodeDump.cjs
+│   └── generateDirectoryTree.cjs
+├── .gitignore
+├── hash_passwords.js
+├── package.json
+├── README.md
+└── users.json

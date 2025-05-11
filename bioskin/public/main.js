@@ -1,318 +1,326 @@
 // public/main.js
-   const { app, BrowserWindow, ipcMain, Menu, nativeImage } = require('electron');
-   const path = require('path');
-   const fs = require('fs');
-   const isDev = require('electron-is-dev');
-   const { db } = require('../src/supabaseClient');
-   const bcrypt = require('bcrypt');
-   const XLSX = require('xlsx');
-   const Papa = require('papaparse');
+require('dotenv').config(); // MUST BE THE VERY FIRST LINE
 
-   // Load environment variables
-   require('dotenv').config();
+const { app, BrowserWindow, ipcMain, Menu, nativeImage } = require('electron');
+const path = require('path');
+const fs = require('fs'); // Keep for icon loading, remove if not used elsewhere
+const isDev = require('electron-is-dev');
 
-   // Path to users file (adjust if needed)
-   // Use app.getAppPath() for reliability, especially after packaging
-   const usersFilePath = path.join(app.getAppPath(), 'users.json');
+// Only import 'db' which contains your custom login and all other DB operations
+const { db } = require('../src/supabaseClient');
+// const { authUtils } = require('../src/supabaseClient'); // REMOVE THIS - Not used for custom auth
 
-   // Variable to hold the currently logged-in user's info (simple session)
-   let currentUser = null;
+const XLSX = require('xlsx'); // Keep for file processing
+const Papa = require('papaparse'); // Keep for file processing
 
-   let mainWindow;
+// const usersFilePath = path.join(app.getAppPath(), 'users.json'); // REMOVE - users are in Supabase DB
+let currentUser = null; // In-memory store for the currently logged-in user (custom auth)
+let mainWindow;
 
-   // --- Electron App Lifecycle ---
-   function createWindow() {
-       // ---> SECTION TO SET UP THE ICON <---
-       const iconPath = path.join(__dirname, 'logo.png'); // Path to your icon in the 'public' folder
-       let windowIcon = null;
-
-       if (fs.existsSync(iconPath)) {
-           windowIcon = nativeImage.createFromPath(iconPath);
-           console.log(`Window icon loaded from: ${iconPath}`);
-       } else {
-           console.warn(`Window icon NOT FOUND at: ${iconPath}. Using default Electron icon.`);
-       }
-       // ---> END OF ICON SETUP SECTION <---
-
-       mainWindow = new BrowserWindow({
-           width: 1200,
-           height: 800,
-           title: "Bioskin Inventory Management System",
-           icon: windowIcon,
-           webPreferences: {
-               preload: path.join(__dirname, 'preload.js'), // Assumes preload.js is in public/
-               contextIsolation: true,
-               nodeIntegration: false,
-           },
-       });
-
-       Menu.setApplicationMenu(null);
-
-       const startUrl = isDev
-           ? 'http://localhost:3000'
-           : `file://${path.join(__dirname, '../build/index.html')}`; // For production
-       mainWindow.loadURL(startUrl);
-
-       mainWindow.webContents.on('did-finish-load', () => {
-           mainWindow.webContents.executeJavaScript(`
-               window.env = {
-                   REACT_APP_SUPABASE_URL: "${process.env.REACT_APP_SUPABASE_URL}",
-                   REACT_APP_SUPABASE_ANON_KEY: "${process.env.REACT_APP_SUPABASE_ANON_KEY}"
-               };
-           `);
-       });
-
-       if (isDev) {
-           mainWindow.webContents.openDevTools({ mode: 'detach' });
-       }
-   }
-
-   // --- App Ready Event ---
-   app.whenReady().then(() => {
-       createWindow(); // Create the application window
-
-       app.on('activate', function () {
-           // Re-create window on macOS dock click if none are open
-           if (BrowserWindow.getAllWindows().length === 0) createWindow();
-       });
-   });
-
-   // --- App Window Closed Event ---
-   app.on('window-all-closed', function () {
-       // Quit the app on all platforms except macOS
-       if (process.platform !== 'darwin') app.quit();
-   });
-
-   // --- IPC Handlers (Backend Logic for Frontend Requests) ---
-
-   // Handle request to get all items
-   ipcMain.handle('get-items', async (event, filters) => {
-       try {
-           return await db.getItems(filters);
-       } catch (error) {
-           console.error('Error getting items:', error);
-           throw error;
-       }
-   });
-
-   ipcMain.handle('get-item-by-id', async (event, id) => {
-       try {
-           return await db.getItemById(id);
-       } catch (error) {
-           console.error('Error getting item by id:', error);
-           throw error;
-       }
-   });
-
-   // Handle request to add a new item
-   ipcMain.handle('create-item', async (event, itemData) => {
-       try {
-           return await db.createItem(itemData);
-       } catch (error) {
-           console.error('Error creating item:', error);
-           throw error;
-       }
-   });
-
-   // Handle request to update an existing item
-   ipcMain.handle('update-item', async (event, id, itemData) => {
-       try {
-           return await db.updateItem(id, itemData);
-       } catch (error) {
-           console.error('Error updating item:', error);
-           throw error;
-       }
-   });
-
-   ipcMain.handle('delete-item', async (event, id) => {
-       try {
-           return await db.deleteItem(id);
-    } catch (error) {
-           console.error('Error deleting item:', error);
-           throw error;
+function createWindow() {
+    const iconPath = path.join(__dirname, 'logo.png');
+    let windowIcon = null;
+    if (fs.existsSync(iconPath)) {
+        windowIcon = nativeImage.createFromPath(iconPath);
+        console.log(`Window icon loaded from: ${iconPath}`);
+    } else {
+        console.warn(`Window icon NOT FOUND at: ${iconPath}. Using default Electron icon.`);
     }
-   });
 
-   // --- Authentication IPC Handlers ---
+    mainWindow = new BrowserWindow({
+        width: 1200,
+        height: 800,
+        title: "Bioskin Inventory Management System",
+        icon: windowIcon,
+        webPreferences: {
+            preload: path.join(__dirname, 'preload.js'),
+            contextIsolation: true,
+            nodeIntegration: false,
+        },
+    });
 
-   function readUsers() {
-     try {
-       // Check if file exists before reading
-       if (fs.existsSync(usersFilePath)) {
-         const data = fs.readFileSync(usersFilePath, 'utf-8');
-         return JSON.parse(data);
-       }
-       console.warn(`Users file not found at: ${usersFilePath}`);
-       return []; // Return empty array if file doesn't exist
-     } catch (error) {
-       console.error("Error reading users file:", error);
-       return []; // Return empty on error
-     }
-   }
+    Menu.setApplicationMenu(null); // Remove default menu
 
-   ipcMain.handle('login', async (event, credentials) => {
-       try {
-           return await db.login(credentials.username, credentials.password);
-     } catch (error) {
-           console.error('Error during login:', error);
-           throw error;
-     }
-   });
+    const startUrl = isDev
+        ? 'http://localhost:3000'
+        : `file://${path.join(__dirname, '../build/index.html')}`;
+    mainWindow.loadURL(startUrl);
 
-   ipcMain.handle('logout', async () => {
-       try {
-           await db.logout();
-           return { success: true };
-       } catch (error) {
-           console.error('Error during logout:', error);
-           throw error;
-       }
-   });
+    // mainWindow.webContents.on('did-finish-load', () => {
+    //     // Exposing env vars this way is generally not recommended for security if preload script is used.
+    //     // The main process should handle all interactions requiring sensitive keys.
+    //     // If React needs non-sensitive env vars, use REACT_APP_ prefix and build process.
+    // });
 
-   // Allows the frontend to check who is logged in when it starts up
-   ipcMain.handle('get-current-user', async () => {
-       try {
-           return await db.getCurrentUser();
-       } catch (error) {
-           console.error('Error getting current user:', error);
-           throw error;
-       }
-   });
+    if (isDev) {
+        mainWindow.webContents.openDevTools({ mode: 'detach' });
+    }
+}
 
-   // --- End Authentication IPC Handlers ---
-   // REPLACE the existing 'get-inventory-summary' handler's try...catch block with this:
-   ipcMain.handle('get-inventory-summary', async () => {
-       try {
-           return await db.getInventorySummary();
-     } catch (error) {
-           console.error('Error getting inventory summary:', error);
-           throw error;
-     }
-   });
+app.whenReady().then(createWindow);
 
-   // REPLACE the existing 'get-low-stock-items' handler's try...catch block with this:
-   ipcMain.handle('get-low-stock-items', async (event, threshold) => {
-       try {
-           return await db.getLowStockItems(threshold);
-     } catch (error) {
-           console.error('Error getting low stock items:', error);
-           throw error;
-       }
-   });
+app.on('activate', function () {
+    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+});
 
-   ipcMain.handle('import-initial-items', async (event, fileData) => {
-       try {
-           const { contentBase64, type } = fileData;
-           const buffer = Buffer.from(contentBase64, 'base64');
-           let items = [];
+app.on('window-all-closed', function () {
+    if (process.platform !== 'darwin') app.quit();
+});
 
-           if (type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') {
-               const workbook = XLSX.read(buffer);
-               const sheetName = workbook.SheetNames[0];
-               const worksheet = workbook.Sheets[sheetName];
-               items = XLSX.utils.sheet_to_json(worksheet);
-           } else if (type === 'text/csv') {
-               const csv = buffer.toString();
-               const result = Papa.parse(csv, { header: true });
-               items = result.data;
-           }
+// --- IPC HANDLERS ---
 
-           const results = {
-               processedCount: items.length,
-               successCount: 0,
-               errors: []
-           };
+// --- Custom Authentication IPC Handlers ---
+ipcMain.handle('login', async (event, credentials) => {
+    console.log(`[main.js] IPC login attempt for username: ${credentials.username}`);
+    const result = await db.login(credentials.username, credentials.password);
+    if (result.success && result.user) {
+        currentUser = result.user;
+        console.log(`[main.js] Login successful. Current user set:`, currentUser);
+    } else {
+        currentUser = null;
+        console.log(`[main.js] Login failed. Reason: ${result.message || 'Unknown (check db.login)'}`);
+    }
+    return result;
+});
 
-           for (const item of items) {
-               try {
-                   await db.createItem({
-                       name: item.Name,
-                       sku: item.SKU,
-                       description: item.Description,
-                       cost_price: parseFloat(item.Cost) || 0,
-                       quantity: parseInt(item.Quantity, 10) || 0,
-                       category: 'Uncategorized', // Default category
-                       storage_location: 'Main Warehouse', // Default storage
-                       status: 'Normal'
-                   });
-                   results.successCount++;
-               } catch (error) {
-                   results.errors.push(`Failed to import item ${item.SKU || item.Name}: ${error.message}`);
-               }
-           }
+ipcMain.handle('get-current-user', async () => {
+    console.log(`[main.js] IPC get-current-user. Returning:`, currentUser);
+    return currentUser;
+});
 
-           return results;
-       } catch (error) {
-           console.error('Error processing initial import:', error);
-           throw error;
-       }
-   });
+ipcMain.handle('logout', async () => {
+    console.log(`[main.js] IPC logout. Clearing current user.`);
+    currentUser = null;
+    return { success: true };
+});
 
-   ipcMain.handle('process-inventory-file', async (event, fileData) => {
-       try {
-           const { contentBase64, type, actionType, columnMapping } = fileData;
-           const buffer = Buffer.from(contentBase64, 'base64');
-           let items = [];
+// --- Database Operation IPC Handlers ---
+ipcMain.handle('get-items', async (event, filters) => {
+    try {
+        console.log('[main.js] IPC get-items called with filters:', filters);
+        return await db.getItems(filters);
+    } catch (error) {
+        console.error('[main.js] Error in get-items handler:', error);
+        return { success: false, message: error.message, items: [] }; // Return structured error
+    }
+});
 
-           if (type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') {
-               const workbook = XLSX.read(buffer);
-               const sheetName = workbook.SheetNames[0];
-               const worksheet = workbook.Sheets[sheetName];
-               items = XLSX.utils.sheet_to_json(worksheet);
-           } else if (type === 'text/csv') {
-               const csv = buffer.toString();
-               const result = Papa.parse(csv, { header: true });
-               items = result.data;
-           }
+ipcMain.handle('get-item-by-id', async (event, id) => {
+    try {
+        return await db.getItemById(id);
+    } catch (error) {
+        console.error('[main.js] Error getting item by id:', id, error);
+        return null; // Or structured error
+    }
+});
 
-           const results = {
-               processedCount: items.length,
-               successCount: 0,
-               errors: []
-           };
+ipcMain.handle('create-item', async (event, itemData) => { // Renamed from 'add-item' to match preload
+    try {
+        console.log('[main.js] IPC create-item called with data:', itemData);
+        return await db.createItem(itemData);
+    } catch (error) {
+        console.error('[main.js] Error creating item:', itemData, error);
+        return { success: false, message: error.message };
+    }
+});
 
-           for (const item of items) {
-               try {
-                   const sku = item[columnMapping.sku];
-                   const quantity = parseInt(item[columnMapping.quantity], 10) || 0;
-                   
-                   if (!sku) {
-                       results.errors.push('Missing SKU in row');
-                       continue;
-                   }
+ipcMain.handle('update-item', async (event, itemDataWithId) => { // Expects a single object with 'id'
+    try {
+        console.log('[main.js] IPC update-item called with data:', itemDataWithId);
+        if (!itemDataWithId || !itemDataWithId.id) {
+            console.error('[main.js] Update item error: ID missing from itemData.');
+            return { success: false, message: "Item ID is required for update." };
+        }
+        const { id, ...dataToUpdate } = itemDataWithId; // Destructure ID from the rest of the data
+        return await db.updateItem(id, dataToUpdate);
+    } catch (error) {
+        console.error(`[main.js] Error updating item ID ${itemDataWithId?.id}:`, error);
+        return { success: false, message: error.message };
+    }
+});
 
-                   const existingItem = await db.getItemById(sku);
-                   if (!existingItem) {
-                       results.errors.push(`Item with SKU ${sku} not found`);
-                       continue;
-                   }
+ipcMain.handle('delete-item', async (event, id) => {
+    try {
+        console.log('[main.js] IPC delete-item called for ID:', id);
+        return await db.deleteItem(id);
+    } catch (error) {
+        console.error(`[main.js] Error deleting item ID ${id}:`, error);
+        return { success: false, message: error.message };
+    }
+});
 
-                   let newQuantity;
-                   switch (actionType) {
-                       case 'add':
-                           newQuantity = existingItem.quantity + quantity;
-                           break;
-                       case 'deduct':
-                           newQuantity = Math.max(0, existingItem.quantity - quantity);
-                           break;
-                       case 'set':
-                           newQuantity = quantity;
-                           break;
-                       default:
-                           throw new Error('Invalid action type');
-                   }
+ipcMain.handle('get-inventory-summary', async () => {
+    try {
+        return await db.getInventorySummary();
+    } catch (error) {
+        console.error('[main.js] Error getting inventory summary:', error);
+        return { success: false, message: error.message, summary: null };
+    }
+});
 
-                   await db.updateItem(existingItem.id, { quantity: newQuantity });
-                   results.successCount++;
-               } catch (error) {
-                   results.errors.push(`Failed to process item: ${error.message}`);
-               }
-           }
+ipcMain.handle('get-low-stock-items', async (event, threshold) => {
+    try {
+        return await db.getLowStockItems(threshold);
+    } catch (error) {
+        console.error('[main.js] Error getting low stock items:', error);
+        return { success: false, message: error.message, items: [] };
+    }
+});
 
-           return results;
-       } catch (error) {
-           console.error('Error processing inventory file:', error);
-           throw error;
-       }
-   });
+ipcMain.handle('import-initial-items', async (event, { fileData }) => { // Destructure fileData from args
+    try {
+        const { contentBase64, type, name: fileName } = fileData; // Assuming name is part of fileData
+        console.log(`[main.js] IPC import-initial-items called for file: ${fileName}`);
+        const buffer = Buffer.from(contentBase64, 'base64');
+        let itemsToParse = [];
 
+        if (type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' || fileName.endsWith('.xlsx')) {
+            const workbook = XLSX.read(buffer, {type: 'buffer'});
+            const sheetName = workbook.SheetNames[0];
+            const worksheet = workbook.Sheets[sheetName];
+            itemsToParse = XLSX.utils.sheet_to_json(worksheet);
+        } else if (type === 'text/csv' || fileName.endsWith('.csv')) {
+            const csv = buffer.toString('utf-8');
+            const result = Papa.parse(csv, { header: true, skipEmptyLines: true });
+            itemsToParse = result.data;
+        } else {
+            return { success: false, message: `Unsupported file type: ${type || 'unknown'}` };
+        }
+
+        const results = {
+            fileName: fileName,
+            processedCount: itemsToParse.length,
+            successCount: 0,
+            errors: []
+        };
+
+        for (const item of itemsToParse) {
+            // Ensure your item properties match the expectedColumns: ['SKU', 'Name', 'Description', 'Cost', 'Quantity']
+            const sku = item.SKU || item.sku;
+            const name = item.Name || item.name;
+
+            if (!sku || !name) {
+                results.errors.push(`Row missing SKU or Name: ${JSON.stringify(item)}`);
+                continue;
+            }
+
+            try {
+                // Check if item with SKU already exists (optional, depends on desired behavior)
+                // const existing = await db.getItemBySku(sku); // You'd need to implement getItemBySku
+                // if (existing) {
+                //    results.errors.push(`Item with SKU ${sku} already exists. Skipped.`);
+                //    continue;
+                // }
+
+                await db.createItem({ // This is db.createItem from supabaseClient.js
+                    name: name,
+                    sku: sku,
+                    description: item.Description || item.description || '',
+                    cost_price: parseFloat(item.Cost || item.cost || item.cost_price) || 0,
+                    quantity: parseInt(item.Quantity || item.quantity, 10) || 0,
+                    category: item.Category || item.category || 'Uncategorized',
+                    storage_location: item.Storage || item.storage || item.storage_location || 'Main Warehouse',
+                    status: item.Status || item.status || 'Normal'
+                });
+                results.successCount++;
+            } catch (dbError) {
+                results.errors.push(`Failed to import item ${sku} (${name}): ${dbError.message}`);
+            }
+        }
+        console.log('[main.js] Initial import results:', results);
+        return { success: true, ...results }; // Ensure result structure matches frontend expectation
+    } catch (error) {
+        console.error('[main.js] Error processing initial import file:', error);
+        return { success: false, message: error.message, processedCount: 0, successCount: 0, errors: [error.message] };
+    }
+});
+
+ipcMain.handle('process-inventory-file', async (event, { fileData, actionType, columnMapping }) => { // Destructure args
+    try {
+        const { contentBase64, type, name: fileName } = fileData;
+        console.log(`[main.js] IPC process-inventory-file called for file: ${fileName}, action: ${actionType}`);
+        const buffer = Buffer.from(contentBase64, 'base64');
+        let itemsToParse = [];
+
+        if (type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' || fileName.endsWith('.xlsx')) {
+            const workbook = XLSX.read(buffer, {type: 'buffer'});
+            const sheetName = workbook.SheetNames[0];
+            const worksheet = workbook.Sheets[sheetName];
+            itemsToParse = XLSX.utils.sheet_to_json(worksheet);
+        } else if (type === 'text/csv' || fileName.endsWith('.csv')) {
+            const csv = buffer.toString('utf-8');
+            const result = Papa.parse(csv, { header: true, skipEmptyLines: true });
+            itemsToParse = result.data;
+        } else {
+            return { success: false, message: `Unsupported file type: ${type || 'unknown'}` };
+        }
+
+        const results = {
+            fileName: fileName,
+            processedCount: itemsToParse.length,
+            successCount: 0,
+            errors: []
+        };
+
+        for (const item of itemsToParse) {
+            const sku = item[columnMapping.sku]; // e.g., item['SKU']
+            const quantityFromFile = parseInt(item[columnMapping.quantity], 10); // e.g., item['Quantity']
+
+            if (!sku) {
+                results.errors.push(`Row missing SKU (expected header '${columnMapping.sku}'): ${JSON.stringify(item)}`);
+                continue;
+            }
+            if (isNaN(quantityFromFile)) {
+                results.errors.push(`Invalid quantity for SKU ${sku} (expected header '${columnMapping.quantity}'): ${item[columnMapping.quantity]}`);
+                continue;
+            }
+
+            try {
+                // You might need a db.getItemBySku function in supabaseClient.js
+                // For now, assuming your items table has SKU as a unique queryable field,
+                // or you adjust this to fetch by a unique ID if SKU isn't primary/unique for lookup.
+                // Let's assume you have a way to get an item by SKU.
+                // This is a placeholder, you'll need to implement db.getItemBySku
+                const itemsWithSku = await db.getItems({ searchTerm: sku }); // This might return multiple if SKU is not unique
+                let existingItem = null;
+                if (itemsWithSku && itemsWithSku.length > 0) {
+                    // Find exact SKU match if searchTerm returns partial matches
+                    existingItem = itemsWithSku.find(i => i.sku === sku);
+                }
+
+                if (!existingItem) {
+                    results.errors.push(`Item with SKU ${sku} not found in database.`);
+                    continue;
+                }
+
+                let newQuantity;
+                const currentQuantity = parseInt(existingItem.quantity, 10) || 0;
+
+                switch (actionType) {
+                    case 'add':
+                        newQuantity = currentQuantity + quantityFromFile;
+                        break;
+                    case 'deduct':
+                        newQuantity = Math.max(0, currentQuantity - quantityFromFile);
+                        break;
+                    case 'set':
+                        newQuantity = quantityFromFile;
+                        break;
+                    default:
+                        results.errors.push(`Invalid action type '${actionType}' for SKU ${sku}`);
+                        continue; // Skip this item
+                }
+
+                await db.updateItem(existingItem.id, { quantity: newQuantity });
+                results.successCount++;
+            } catch (dbError) {
+                results.errors.push(`Failed to process SKU ${sku}: ${dbError.message}`);
+            }
+        }
+        console.log('[main.js] Bulk update results:', results);
+        return { success: true, ...results }; // Ensure result structure matches frontend expectation
+    } catch (error) {
+        console.error('[main.js] Error processing bulk inventory file:', error);
+        return { success: false, message: error.message, processedCount: 0, successCount: 0, errors: [error.message] };
+    }
+});

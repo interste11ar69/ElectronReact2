@@ -16,11 +16,11 @@ function LoginPage({ onLoginSuccess }) {
   const handleLogin = async (event) => {
     event.preventDefault();
     setError('');
-    setIsLoading(true);
+    setIsLoading(true); // Set loading at the start
 
     if (!username || !password) {
       setError('Please enter both username and password.');
-      setIsLoading(false);
+      setIsLoading(false); // Reset for client-side validation error
       return;
     }
 
@@ -29,13 +29,20 @@ function LoginPage({ onLoginSuccess }) {
       if (result.success) {
         onLoginSuccess(result.user);
         navigate('/');
+        // No need to set isLoading to false here if navigating away,
+        // but it doesn't hurt if finally block does it.
       } else {
         setError(result.message || 'Login failed. Please check your credentials.');
+        console.error('Login failed:', result);
+        // setIsLoading(false); // Moved to finally
       }
     } catch (err) {
-      setError('An error occurred during login. ' + err.message);
+      setError('An error occurred during login. ' + (err.message || 'Please try again.'));
+      console.error('IPC Login error:', err);
+      // setIsLoading(false); // Moved to finally
     } finally {
-      setIsLoading(false);
+      // This block will execute regardless of whether the try succeeded or an error was caught
+      setIsLoading(false); // <<< --- ADD THIS LINE (or ensure it's here)
     }
   };
 

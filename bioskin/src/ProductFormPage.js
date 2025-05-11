@@ -1,47 +1,48 @@
 // FILE: src/ProductFormPage.js
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { FaArrowLeft, FaThLarge } from 'react-icons/fa'; // Removed unused FaBell, FaUserCircle
+import { FaArrowLeft, FaThLarge } from 'react-icons/fa';
 import './ProductFormPage.css';
-import SuccessModal from './SuccessModal'; // Import the modal
+import SuccessModal from './SuccessModal'; // Ensure this component exists and works
 
-function ProductFormPage({ currentUser }) {
-    const { id } = useParams(); // Get item ID from URL if editing
+function ProductFormPage({ currentUser }) { // currentUser might be used for role-based logic if needed
+    const { id: itemIdFromParams } = useParams(); // Get item ID from URL if editing, renamed to avoid conflict
     const navigate = useNavigate();
-    const isEditing = Boolean(id);
+    const isEditing = Boolean(itemIdFromParams);
 
     // Form State
-    const [formData, setFormData] = useState({
+    const initialFormData = {
         name: '',
         sku: '',
         description: '',
         cost_price: '',
         quantity: '',
         category: '',
-        storage: '',  // This is the frontend state name for storage
+        storage: '',  // This is the frontend state name for 'storage_location'
         variant: '',
         status: 'Normal', // Default status
-    });
+    };
+    const [formData, setFormData] = useState(initialFormData);
 
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [error, setError] = useState('');
-    const [isLoading, setIsLoading] = useState(false);
+    const [isLoading, setIsLoading] = useState(false); // For loading item data when editing
     const [confirmDetails, setConfirmDetails] = useState(false);
     const [showSuccessModal, setShowSuccessModal] = useState(false);
 
-    // Placeholder data for dropdowns - Ensure these match your actual available options
-    const categories = ["Beauty Soap", "Skincare", "Wellness", "Cosmetics", "Soap"]; // Added "Soap" as it was in ItemManagementPage
-    const storageOptions = ["STORE", "Main Warehouse", "Retail Shelf", "Online Fulfillment"]; // Added "Retail Shelf" as it was in ItemManagementPage
+    // Placeholder data for dropdowns
+    const categories = ["Beauty Soap", "Skincare", "Wellness", "Cosmetics", "Soap", "Body Care", "Hair Care"];
+    const storageOptions = ["STORE", "Main Warehouse", "Retail Shelf", "Online Fulfillment", "STORE A", "STORE B"];
 
     useEffect(() => {
-        if (isEditing) {
-            setIsLoading(true); // Set loading true at the start of fetching
+        if (isEditing && itemIdFromParams) {
+            setIsLoading(true);
             const fetchItemData = async () => {
                 setError('');
                 try {
-                    console.log(`ProductFormPage: Fetching item with ID: ${id}`);
-                    const item = await window.electronAPI.getItemById(id);
-                    // VERY IMPORTANT: Log the fetched item to see its structure
+                    console.log(`ProductFormPage: Fetching item with ID: ${itemIdFromParams}`);
+                    // Ensure getItemById is exposed in preload and handled in main
+                    const item = await window.electronAPI.getItemById(itemIdFromParams);
                     console.log("ProductFormPage: Fetched item for editing:", JSON.stringify(item, null, 2));
 
                     if (item) {
@@ -51,16 +52,14 @@ function ProductFormPage({ currentUser }) {
                             description: item.description || '',
                             cost_price: item.cost_price !== null ? String(item.cost_price) : '',
                             quantity: item.quantity !== null ? String(item.quantity) : '',
-                            category: item.category || '', // Assumes backend returns 'category'
-                            // Map the backend's storage field to the form's 'storage' field
-                            // ** CHECK YOUR CONSOLE LOG ** for the actual field name from backend
-                            storage: item.storage_location || item.storage || '', // Prioritize storage_location, fallback to storage, then empty
+                            category: item.category || '',
+                            storage: item.storage_location || item.storage || '', // Map storage_location to 'storage'
                             variant: item.variant || '',
                             status: item.status || 'Normal',
                         });
                     } else {
-                        setError(`Item with ID ${id} not found.`);
-                        console.warn(`ProductFormPage: Item with ID ${id} not found by backend.`);
+                        setError(`Item with ID ${itemIdFromParams} not found or an error occurred.`);
+                        console.warn(`ProductFormPage: Item with ID ${itemIdFromParams} not found by backend or backend returned null/error.`);
                     }
                 } catch (err) {
                     console.error("ProductFormPage: Error fetching item data:", err);
@@ -71,22 +70,17 @@ function ProductFormPage({ currentUser }) {
             };
             fetchItemData();
         } else {
-            // Reset form for 'new' page
-            setFormData({
-                name: '', sku: '', description: '', cost_price: '', quantity: '',
-                category: '', storage: '', variant: '', status: 'Normal',
-            });
-            setConfirmDetails(false); // Also reset confirm checkbox for new items
-            setIsLoading(false); // Ensure loading is false if not editing
+            // Reset form for 'new' page or if itemIdFromParams is missing
+            setFormData(initialFormData);
+            setConfirmDetails(false);
+            setIsLoading(false);
         }
-    }, [id, isEditing]); // Dependencies for useEffect
+    }, [itemIdFromParams, isEditing]); // Dependencies for useEffect
 
     const handleChange = (e) => {
         const { name, value, type, checked } = e.target;
-        if (type === 'checkbox') {
-            if (name === "confirmDetails") { // Ensure we only set confirmDetails for its specific checkbox
-                setConfirmDetails(checked);
-            }
+        if (name === "confirmDetails" && type === 'checkbox') {
+            setConfirmDetails(checked);
         } else {
             setFormData(prev => ({ ...prev, [name]: value }));
         }
@@ -98,6 +92,9 @@ function ProductFormPage({ currentUser }) {
 
     const handleSubmit = async (e) => {
         e.preventDefault();
+        setError(''); // Clear previous errors
+
+        // Client-side validations
         if (!confirmDetails) {
             setError('Please confirm the details before saving.');
             return;
@@ -110,61 +107,71 @@ function ProductFormPage({ currentUser }) {
             setError('Product Category is required.');
             return;
         }
-        if (!formData.storage) {
+        if (!formData.storage) { // 'storage' is the form field name
             setError('Storage Location is required.');
             return;
         }
-        if (formData.cost_price === '' || isNaN(parseFloat(formData.cost_price)) || parseFloat(formData.cost_price) < 0) {
+        const costPrice = parseFloat(formData.cost_price);
+        if (formData.cost_price === '' || isNaN(costPrice) || costPrice < 0) {
             setError('Valid Product Price is required (e.g., 60.00).');
             return;
         }
-        if (formData.quantity === '' || isNaN(parseInt(formData.quantity, 10)) || parseInt(formData.quantity, 10) < 0) {
+        const quantity = parseInt(formData.quantity, 10);
+        if (formData.quantity === '' || isNaN(quantity) || quantity < 0) {
             setError('Valid Product Stock quantity is required (e.g., 100).');
             return;
         }
 
-
         setIsSubmitting(true);
-        setError('');
 
         const itemDataToSave = {
             name: formData.name.trim(),
-            sku: formData.sku.trim() || null,
+            sku: formData.sku.trim() || null, // Send null if empty for optional SKU
             description: formData.description.trim() || null,
-            cost_price: parseFloat(formData.cost_price) || 0.0,
-            quantity: parseInt(formData.quantity, 10) || 0,
+            cost_price: costPrice, // Use the parsed float
+            quantity: quantity,     // Use the parsed int
             category: formData.category,
-            storage_location: formData.storage, // Maps frontend 'storage' to backend 'storage_location'
+            storage_location: formData.storage, // Map frontend 'storage' to backend 'storage_location'
             variant: formData.variant.trim() || null,
             status: formData.status,
         };
 
         if (isEditing) {
-            itemDataToSave.id = parseInt(id, 10); // Ensure ID is an integer if it's coming from URL params
+            itemDataToSave.id = parseInt(itemIdFromParams, 10);
         }
 
         console.log(`ProductFormPage: Attempting to ${isEditing ? 'update' : 'add'} item with data:`, JSON.stringify(itemDataToSave, null, 2));
+        console.log('window.electronAPI object keys:', Object.keys(window.electronAPI || {})); // Debugging
 
         try {
             let result;
             if (isEditing) {
-                result = await window.electronAPI.updateItem(itemDataToSave);
+                if (typeof window.electronAPI.updateItem !== 'function') {
+                    throw new TypeError('window.electronAPI.updateItem is not a function. Check preload.js');
+                }
+                result = await window.electronAPI.updateItem(itemDataToSave); // Pass the whole object including ID
             } else {
-                result = await window.electronAPI.addItem(itemDataToSave);
+                if (typeof window.electronAPI.createItem !== 'function') {
+                    throw new TypeError('window.electronAPI.createItem is not a function. Check preload.js');
+                }
+                result = await window.electronAPI.createItem(itemDataToSave); // Use createItem
             }
 
             console.log(`ProductFormPage: Backend ${isEditing ? 'update' : 'add'} result:`, result);
 
             if (result && result.success) {
                 setShowSuccessModal(true);
-                // Do not reset form here for editing; navigation handles it.
+                // Don't reset form here for editing; navigation handles it.
                 // For new items, navigation after modal close will also show a fresh page.
             } else {
-                setError(`Failed to ${isEditing ? 'update' : 'add'} item: ${result ? result.message : 'Unknown backend error'}`);
+                // Handle cases where result might be null or not have a success flag or message
+                const backendMessage = result ? result.message : 'Operation failed without a specific message.';
+                setError(`Failed to ${isEditing ? 'update' : 'add'} item: ${backendMessage}`);
+                console.error(`ProductFormPage: Backend operation failed. Result:`, result);
             }
         } catch (err) {
-            console.error(`ProductFormPage: Error during ${isEditing ? 'update' : 'add'} item:`, err);
-            setError(`An error occurred: ${err.message}`);
+            console.error(`ProductFormPage: Error during ${isEditing ? 'update' : 'add'} item API call:`, err);
+            setError(`An error occurred: ${err.message}. Check console for details.`);
         } finally {
             setIsSubmitting(false);
         }
@@ -175,8 +182,7 @@ function ProductFormPage({ currentUser }) {
         navigate('/products'); // Navigate back to list after closing modal
     };
 
-
-    if (isLoading) { // Simplified loading check
+    if (isLoading && isEditing) { // Only show loading when fetching existing item data
         return <div className="page-container" style={{ padding: '2rem', textAlign: 'center' }}>Loading product details...</div>;
     }
 
@@ -196,7 +202,7 @@ function ProductFormPage({ currentUser }) {
                 </div>
             </header>
 
-            {error && <div className="error-message card">Error: {error}</div>}
+            {error && <div className="error-message card" role="alert">Error: {error}</div>}
 
             <form onSubmit={handleSubmit} className="product-form card">
                  {/* Row 1: Category & Storage */}
@@ -212,7 +218,7 @@ function ProductFormPage({ currentUser }) {
                          </div>
                      </div>
                      <div className="form-group form-group-inline">
-                         <label htmlFor="storage">Choose Storage *</label>
+                         <label htmlFor="storage">Choose Storage *</label> {/* 'storage' matches form field name */}
                          <div className="input-with-icon">
                             <FaThLarge className="input-icon" />
                              <select id="storage" name="storage" value={formData.storage} onChange={handleChange} required>
@@ -261,7 +267,7 @@ function ProductFormPage({ currentUser }) {
                      <input type="text" id="sku" name="sku" value={formData.sku} onChange={handleChange} placeholder="e.g., BIOSKIN-KS-135"/>
                  </div>
 
-                 {/* Row 5: Description (Added based on formData) */}
+                 {/* Row 5: Description */}
                  <div className="form-group">
                     <label htmlFor="description">Product Description (Optional)</label>
                     <textarea
@@ -274,21 +280,20 @@ function ProductFormPage({ currentUser }) {
                     ></textarea>
                 </div>
 
-
                 {/* Row 6: Submit and Confirm */}
                 <div className="form-footer">
                     <div className="confirm-checkbox">
                          <input
                             type="checkbox"
                             id="confirmDetails"
-                            name="confirmDetails" // Added name attribute
+                            name="confirmDetails"
                             checked={confirmDetails}
                             onChange={handleChange}
                          />
                          <label htmlFor="confirmDetails">I confirm all details of this product are correct.</label>
                      </div>
                      <div className="form-actions">
-                         <button type="submit" className="button save-button" disabled={isSubmitting || !confirmDetails || isLoading}>
+                         <button type="submit" className="button save-button" disabled={isSubmitting || !confirmDetails || (isLoading && isEditing)}>
                              {isSubmitting ? 'Saving...' : (isEditing ? 'Update Product' : 'Save Product')}
                          </button>
                      </div>

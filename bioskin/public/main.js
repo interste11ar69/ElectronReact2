@@ -148,6 +148,69 @@ ipcMain.handle('delete-item', async (event, id) => {
         return { success: false, message: error.message };
     }
 });
+// --- NEW CUSTOMER IPC HANDLERS ---
+ipcMain.handle('get-customers', async (event, filters) => {
+  console.log('[Main Process] Received "get-customers" request with filters:', filters);
+  try {
+    const customers = await db.getCustomers(filters);
+    console.log('[Main Process] "get-customers" returning:', customers ? customers.length : 0, 'customers');
+    return customers; // Return the array of customers (or an empty array)
+  } catch (error) {
+    console.error('[Main Process] Error in "get-customers" handler:', error);
+    // It's often better to return a structured error object or throw
+    // so the renderer can distinguish between an empty result and an error.
+    // For now, returning an object with an error property:
+    return { error: error.message || 'Failed to fetch customers.' };
+  }
+});
+
+ipcMain.handle('get-customer-by-id', async (event, id) => {
+  console.log('[Main Process] Received "get-customer-by-id" request for ID:', id);
+  try {
+    const customer = await db.getCustomerById(id);
+    return customer;
+  } catch (error) {
+    console.error('[Main Process] Error in "get-customer-by-id" handler:', error);
+    return { error: error.message || 'Failed to fetch customer by ID.' };
+  }
+});
+
+ipcMain.handle('create-customer', async (event, customerData) => {
+  console.log('[Main Process] Received "create-customer" request with data:', customerData);
+  try {
+    // db.createCustomer should return { success: true/false, customer: data/null, message: '...' }
+    return await db.createCustomer(customerData);
+  } catch (error) { // This catch is if db.createCustomer itself throws unexpectedly
+    console.error('[Main Process] Error in "create-customer" handler:', error);
+    return { success: false, message: error.message || 'Unexpected error creating customer.' };
+  }
+});
+
+ipcMain.handle('update-customer', async (event, customerDataWithId) => {
+  console.log('[Main Process] Received "update-customer" request with data:', customerDataWithId);
+  try {
+    const { id, ...customerData } = customerDataWithId;
+    if (!id) {
+      return { success: false, message: "Customer ID is missing for update." };
+    }
+    // db.updateCustomer should return { success: true/false, customer: data/null, message: '...' }
+    return await db.updateCustomer(id, customerData);
+  } catch (error) { // This catch is if db.updateCustomer itself throws unexpectedly
+    console.error('[Main Process] Error in "update-customer" handler:', error);
+    return { success: false, message: error.message || 'Unexpected error updating customer.' };
+  }
+});
+
+ipcMain.handle('delete-customer', async (event, id) => {
+  console.log('[Main Process] Received "delete-customer" request for ID:', id);
+  try {
+    // db.deleteCustomer should return { success: true/false, message: '...' }
+    return await db.deleteCustomer(id);
+  } catch (error) { // This catch is if db.deleteCustomer itself throws unexpectedly
+    console.error('[Main Process] Error in "delete-customer" handler:', error);
+    return { success: false, message: error.message || 'Unexpected error deleting customer.' };
+  }
+});
 
 ipcMain.handle('get-inventory-summary', async () => {
     try {
@@ -323,4 +386,5 @@ ipcMain.handle('process-inventory-file', async (event, { fileData, actionType, c
         console.error('[main.js] Error processing bulk inventory file:', error);
         return { success: false, message: error.message, processedCount: 0, successCount: 0, errors: [error.message] };
     }
+
 });

@@ -5,7 +5,7 @@ import './Sidebar.css';
 import {
     FaTachometerAlt, FaBoxOpen, FaTags, FaShoppingCart,
     FaTruckMoving, FaUsers, FaUserCircle, FaSignOutAlt,
-    FaFileUpload, FaPenSquare, FaChartBar // Added more icons
+    FaFileUpload, FaPenSquare, FaChartBar,FaAddressBook // Added more icons
 } from 'react-icons/fa';
 import appLogo from './assets/logo.png';
 function Sidebar({ onLogout, currentUser }) {
@@ -22,15 +22,11 @@ function Sidebar({ onLogout, currentUser }) {
     }
   };
 
-  // --- Define your navigation links ---
-  // The 'path' should match your Route paths in App.js
-  // The 'adminOnly' flag will hide links from non-admin users
   const mainNavLinks = [
     { path: '/', label: 'Dashboard', icon: <FaTachometerAlt /> },
     { path: '/products', label: 'Inventory', icon: <FaBoxOpen /> },
-    // { path: '/categories', label: 'Categories', icon: <FaTags />, adminOnly: true }, // Example for future
-    // { path: '/orders', label: 'Orders', icon: <FaShoppingCart /> }, // Example for future
-    // { path: '/suppliers', label: 'Suppliers', icon: <FaTruckMoving />, adminOnly: true }, // Example for future
+     { path: '/customers', label: 'Customers', icon: <FaAddressBook /> },
+
   ];
 
   const adminToolsLinks = [
@@ -39,10 +35,6 @@ function Sidebar({ onLogout, currentUser }) {
     { path: '/initial-import', label: 'Initial Import', icon: <FaFileUpload />, adminOnly: true },
     // { path: '/users', label: 'Users', icon: <FaUsers />, adminOnly: true }, // Example for future
   ];
-
-  // const userProfileLinks = [
-  //   { path: '/profile', label: 'Profile', icon: <FaUserCircle /> }, // Example for future
-  // ];
 
   const renderLinks = (linksArray) => {
     return linksArray.map(link => {
@@ -81,10 +73,6 @@ function Sidebar({ onLogout, currentUser }) {
           </>
         )}
 
-        {/* <p className="nav-section-title">User</p>
-        <ul>
-          {renderLinks(userProfileLinks)}
-        </ul> */}
       </nav>
       <div className="sidebar-footer">
         <button onClick={handleLogoutClick} className="logout-button">

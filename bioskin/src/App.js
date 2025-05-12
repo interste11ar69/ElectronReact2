@@ -13,6 +13,8 @@ import ProductFormPage from './ProductFormPage';
 import AnalyticsPage from './AnalyticsPage';
 import BulkUpdatePage from './BulkUpdatePage';
 import InitialImportPage from './InitialImportPage';
+import CustomerManagementPage from './CustomerManagementPage';
+import CustomerFormPage from './CustomerFormPage';
 
 // Placeholder pages for future sidebar links (optional, for testing navigation)
 // const UsersPage = () => <div className="container page-container" style={{padding: '20px'}}><h1 style={{textAlign: 'left'}}>Users Management (WIP)</h1></div>;
@@ -84,19 +86,13 @@ function AppRouter() {
     return (
         <Router>
             <Routes>
-                {/* Login Route */}
-                {/* If a user is already logged in and tries to access /login, redirect them to the dashboard.
-                    Otherwise, show the LoginPage. */}
+
                 <Route
                     path="/login"
                     element={
                         currentUser ? <Navigate to="/" replace /> : <LoginPage onLoginSuccess={handleLoginSuccess} />
                     }
                 />
-
-                {/* Protected Routes - These routes require authentication and use the Main Layout */}
-                {/* This is a parent route. If the user is authenticated, it renders the Layout component.
-                    The Layout component contains the Sidebar and an <Outlet /> for child routes. */}
                 <Route
                     element={
                         <ProtectedRoute user={currentUser}>
@@ -117,17 +113,12 @@ function AppRouter() {
                             <Route path="/analytics" element={<AnalyticsPage />} />
                             <Route path="/bulk-update" element={<BulkUpdatePage />} />
                             <Route path="/initial-import" element={<InitialImportPage />} />
-                            {/* <Route path="/users" element={<UsersPage />} /> */}
-                            {/* Add other admin-only pages here as they are developed */}
-                            {/* <Route path="/categories" element={<CategoriesPage />} /> */}
-                            {/* <Route path="/suppliers" element={<SuppliersPage />} /> */}
+                            <Route path="/customers" element={<CustomerManagementPage currentUser={currentUser} />} />
+                            <Route path="/customers/new" element={<CustomerFormPage currentUser={currentUser} />} />
+                            <Route path="/customers/:id/edit" element={<CustomerFormPage currentUser={currentUser} />} />
                         </>
                     )}
-                    {/* Example for a general user page like Profile */}
-                    {/* <Route path="/profile" element={<ProfilePage />} /> */}
 
-                    {/* Add a route for orders if/when that page is created */}
-                    {/* <Route path="/orders" element={<OrdersPage />} /> */}
                 </Route>
 
                 {/* Catch-all Route */}

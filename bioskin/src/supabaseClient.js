@@ -210,5 +210,92 @@ export const db = {
       return { success: false, message: error.message || "Failed to get low stock items.", items: [] };
     }
   },
+  // --- CUSTOMER MANAGEMENT FUNCTIONS ---
+    async getCustomers(filters = {}) {
+      if (!supabase) return Promise.reject(new Error("Supabase client not initialized."));
+      try {
+        let query = supabase.from('customers').select('*').order('created_at', { ascending: false }); // Default order
+
+        // Example filters (customize as needed)
+        if (filters.searchTerm) {
+          query = query.or(`full_name.ilike.%${filters.searchTerm}%,email.ilike.%${filters.searchTerm}%,phone.ilike.%${filters.searchTerm}%`);
+        }
+        // Add more filters like by city, etc. if you add those fields
+
+        const { data, error } = await query;
+        if (error) throw error;
+        return data || [];
+      } catch (error) {
+        console.error('Error in getCustomers:', error);
+        throw error;
+      }
+    },
+
+    async getCustomerById(id) {
+      if (!supabase) return Promise.reject(new Error("Supabase client not initialized."));
+      try {
+        const { data, error } = await supabase.from('customers').select('*').eq('id', id).single();
+        if (error) throw error;
+        return data;
+      } catch (error) {
+        console.error('Error in getCustomerById:', error);
+        throw error;
+      }
+    },
+
+    async createCustomer(customerData) {
+      if (!supabase) return { success: false, message: "Database client not initialized." };
+      try {
+        // Add any necessary defaults or transformations here if needed
+        const dataToInsert = {
+          full_name: customerData.full_name,
+          email: customerData.email || null,
+          phone: customerData.phone || null,
+          address: customerData.address || null,
+          notes: customerData.notes || null,
+          // created_at and updated_at will be handled by the database
+        };
+        const { data, error } = await supabase.from('customers').insert([dataToInsert]).select().single();
+        if (error) {
+          console.error('Error creating customer in Supabase:', error);
+          throw error;
+        }
+        return { success: true, customer: data };
+      } catch (error) {
+        console.error('Error in createCustomer:', error);
+        return { success: false, message: error.message || "Failed to create customer." };
+      }
+    },
+
+    async updateCustomer(id, customerData) {
+      if (!supabase) return { success: false, message: "Database client not initialized." };
+      try {
+        const dataToUpdate = { ...customerData };
+        delete dataToUpdate.id; // Ensure 'id' is not part of the payload to supabase.update()
+        // `updated_at` will be handled by the trigger if you set it up
+
+        const { data, error } = await supabase.from('customers').update(dataToUpdate).eq('id', id).select().single();
+        if (error) {
+          console.error('Error updating customer in Supabase:', error);
+          throw error;
+        }
+        return { success: true, customer: data };
+      } catch (error) {
+        console.error('Error in updateCustomer:', error);
+        return { success: false, message: error.message || "Failed to update customer." };
+      }
+    },
+
+    async deleteCustomer(id) {
+      if (!supabase) return { success: false, message: "Database client not initialized." };
+      try {
+        const { error } = await supabase.from('customers').delete().eq('id', id);
+        if (error) throw error;
+        return { success: true, message: 'Customer deleted successfully.' };
+      } catch (error) {
+        console.error('Error in deleteCustomer:', error);
+        return { success: false, message: error.message || "Failed to delete customer." };
+      }
+    },
   // Implement your file processing db functions (processBulkUpdate, importInitialItemsFromFile) here if they interact with Supabase
 };

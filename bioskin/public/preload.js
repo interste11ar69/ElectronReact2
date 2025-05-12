@@ -65,7 +65,13 @@ contextBridge.exposeInMainWorld(
     processInventoryFile: (args) => { // args will be like { fileData, actionType, columnMapping }
       console.log('[Preload] Invoking "process-inventory-file" with args:', args);
       return ipcRenderer.invoke('process-inventory-file', args);
-    }
+    },
+
+    getCustomers: (filters) => ipcRenderer.invoke('get-customers', filters),
+      getCustomerById: (id) => ipcRenderer.invoke('get-customer-by-id', id),
+      createCustomer: (customerData) => ipcRenderer.invoke('create-customer', customerData),
+      updateCustomer: (customerDataWithId) => ipcRenderer.invoke('update-customer', customerDataWithId),
+      deleteCustomer: (id) => ipcRenderer.invoke('delete-customer', id),
     // Add any other IPC channels you need
   }
 );

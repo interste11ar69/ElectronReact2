@@ -1,0 +1,193 @@
+/* src/CustomerManagementPage.css */
+
+/* Main page structure */
+.customer-management-page {
+    display: flex;
+    flex-direction: column;
+    height: 100%; /* Essential for child flex-grow to work as expected */
+}
+
+/* --- Reusing Styles from ItemManagementPage.css (by applying same classes in CustomerManagementPage.js) --- */
+/* If CustomerManagementPage.js uses these classes, these styles will apply: */
+
+/* Page Header (e.g., "Customer List" title) */
+.customer-management-page .page-header-alt { /* Assuming you use this class in JS */
+    flex-shrink: 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: calc(var(--spacing-unit) * 3);
+    padding-bottom: calc(var(--spacing-unit) * 3);
+    border-bottom: 1px solid var(--color-border-soft);
+}
+
+.customer-management-page .page-header-alt h1 { /* Assuming you use this structure in JS */
+    font-size: 1.8em;
+    color: var(--color-text-dark);
+    font-weight: 700;
+    margin: 0;
+    text-align: left !important;
+    border-bottom: none !important;
+}
+
+/* Wrapper for the main content block (with overall golden border) */
+.customer-management-page .content-block-wrapper { /* Assuming you use this class in JS */
+    flex-grow: 1;
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--color-accent-gold) !important;
+    padding: calc(var(--spacing-unit) * 4);
+    background-color: var(--color-surface);
+    border-radius: var(--border-radius-rounded);
+    box-shadow: var(--box-shadow);
+    overflow: hidden;
+}
+
+/* Filters Section */
+.customer-management-page .filter-section-alt { /* Assuming you use this class in JS */
+    flex-shrink: 0;
+    margin-bottom: calc(var(--spacing-unit) * 4);
+}
+
+.customer-management-page .filters-bar { /* Assuming you use this class in JS */
+    display: flex;
+    flex-direction: column; /* STACK the rows of filters */
+    align-items: stretch;
+    gap: calc(var(--spacing-unit) * 3);
+}
+
+.customer-management-page .filter-row { /* Assuming you use this class in JS */
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: calc(var(--spacing-unit) * 3);
+    width: 100%;
+}
+
+/* Search Input Group (If you implement more filters, copy relevant styles from ItemManagementPage.css) */
+.customer-management-page .search-input-group { /* Assuming you use this class in JS */
+    flex-grow: 1;
+    min-width: 280px;
+    display: flex;
+    align-items: center;
+    border: 1px solid var(--color-accent-gold) !important;
+    border-radius: var(--border-radius-rounded);
+    background-color: var(--color-surface);
+    height: 44px;
+    box-sizing: border-box;
+    padding: 0 calc(var(--spacing-unit) * 1.5);
+}
+
+.customer-management-page .search-input-group .search-icon { /* Assuming you use this class in JS */
+    color: var(--color-text-medium);
+    font-size: 1em;
+    margin-right: calc(var(--spacing-unit) * 2);
+}
+
+.customer-management-page .search-input-group input[type="text"] { /* Assuming you use this class in JS */
+    flex-grow: 1;
+    border: none; outline: none; background-color: transparent;
+    font-size: 0.9em; color: var(--color-text-dark); height: 100%; padding: 0;
+}
+
+/* Remove if not used in CustomerManagementPage.js for customers */
+/*
+.customer-management-page .search-input-group .filter-action-icon {
+    color: var(--color-text-medium); font-size: 1em;
+    margin-left: calc(var(--spacing-unit) * 2); cursor: pointer;
+}
+.customer-management-page .search-input-group .filter-action-icon:hover { color: var(--color-text-dark); }
+*/
+
+/* Customer List Section (Scrollable Area) */
+.customer-management-page .stock-list-section { /* Assuming you use this class name (can rename to .customer-list-section if preferred) */
+    /* flex-grow: 1; */ /* Use max-height primarily for controlled scrolling */
+    max-height: 60vh;   /* Adjust as needed */
+    overflow-y: auto;
+    min-height: 200px;
+    border: 1px solid var(--color-border-soft);
+    border-radius: var(--border-radius);
+    padding: 0;
+}
+
+.customer-management-page .stock-list-section .table-container { /* Assuming you use this class */
+    width: 100%;
+    height: 100%; /* Make table container fill the section */
+}
+
+/* Customer Table Styling */
+#customerTable {
+    width: 100%;
+    /* margin-bottom: calc(var(--spacing-unit) * 2); */ /* Already handled by table-container or section? Remove if redundant */
+    margin-bottom: 0 !important; /* Good practice if table is inside a scrollable container */
+    color: var(--color-text-dark);
+    border-collapse: collapse;
+    border-spacing: 0;
+}
+
+#customerTable th,
+#customerTable td {
+    padding: calc(var(--spacing-unit) * 2);
+    vertical-align: middle;
+    border-top: 1px solid var(--color-border-soft);
+    border-bottom: 1px solid var(--color-border-soft);
+    border-left: none;
+    border-right: none;
+    text-align: left;
+    /* Add white-space: nowrap; to td if you want to prevent text wrapping and rely on horizontal scroll of table-container */
+}
+
+#customerTable thead th {
+    vertical-align: bottom;
+    border-bottom: 2px solid var(--color-border-strong);
+    border-top: none;
+    background-color: var(--color-table-header-bg);
+    font-weight: 600;
+    color: var(--color-text-medium);
+    white-space: nowrap; /* Prevent header text from wrapping */
+}
+
+#customerTable tbody tr:hover {
+    background-color: var(--color-table-row-hover);
+}
+
+/* Styles for action buttons within the table (Edit/Delete) */
+/* These will be inherited from index.css if you use .button-edit and .button-delete classes */
+#customerTable .table-actions .button-edit {
+    /* Inherits from index.css */
+}
+#customerTable .table-actions .button-delete {
+    /* Inherits from index.css */
+}
+
+
+/* Loading Placeholder (inside .customer-list-section or .stock-list-section) */
+.loading-placeholder {
+    text-align: center;
+    padding: 2rem 1rem;
+    color: var(--color-text-light);
+    font-style: italic;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100px; /* Ensure it's visible */
+}
+
+/* Action Buttons Bar (Add New Customer, Generate Report) */
+.customer-management-page .page-actions-bar { /* Assuming you use this class in JS */
+    flex-shrink: 0;
+    margin-top: calc(var(--spacing-unit) * 4); /* Increased gap from table to buttons */
+    display: flex;
+    gap: calc(var(--spacing-unit) * 2);
+    align-items: center;
+}
+.customer-management-page .page-actions-bar .button { /* Assuming you use this class in JS */
+   border-radius: var(--border-radius-rounded);
+   padding: calc(var(--spacing-unit) * 2) calc(var(--spacing-unit) * 3.5);
+   font-weight: 500;
+}
+
+/* Utility classes for text alignment (likely inherited from index.css) */
+/* .text-right { text-align: right !important; } */
+/* .text-center { text-align: center !important; } */
+/* .text-left { text-align: left !important; } */

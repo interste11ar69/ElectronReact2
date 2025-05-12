@@ -58,8 +58,9 @@ async function generateTree(dir, prefix = '') {
         entries = await fs.readdir(dir, { withFileTypes: true });
     } catch (err) {
         // Handle potential permission errors gracefully
-        console.warn(\n[Warning] Could not read directory: ${dir} (${err.code || err.message}));
-        return ${prefix}└── [Error reading directory]\n;
+        // FIXED: Used backticks for template literal
+        console.warn(`\n[Warning] Could not read directory: ${dir} (${err.code || err.message})`);
+        return `${prefix}└── [Error reading directory]\n`;
     }
 
     // Filter out ignored entries
@@ -91,8 +92,9 @@ async function generateTree(dir, prefix = '') {
 
 async function main() {
     const resolvedRootDir = path.resolve(rootDir);
-    console.log(Generating project tree for: ${resolvedRootDir});
-    console.log(Ignoring: ${Array.from(ignoreSet).join(', ')});
+    // FIXED: Used backticks for template literals
+    console.log(`Generating project tree for: ${resolvedRootDir}`);
+    console.log(`Ignoring: ${Array.from(ignoreSet).join(', ')}`);
 
     // Start the tree output with the root directory name
     let treeOutput = path.basename(resolvedRootDir) + '\n';
@@ -100,9 +102,11 @@ async function main() {
 
     try {
         await fs.writeFile(outputFile, treeOutput);
-        console.log(\nProject tree successfully saved to: ${outputFile});
+        // FIXED: Used backticks for template literal
+        console.log(`\nProject tree successfully saved to: ${outputFile}`);
     } catch (err) {
-        console.error(\n[Error] Failed to write output file: ${outputFile}, err);
+        // FIXED: Used backticks for template literal
+        console.error(`\n[Error] Failed to write output file: ${outputFile}`, err);
     }
 }
 

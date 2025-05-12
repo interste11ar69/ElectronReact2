@@ -297,5 +297,6 @@ export const db = {
         return { success: false, message: error.message || "Failed to delete customer." };
       }
     },
+
   // Implement your file processing db functions (processBulkUpdate, importInitialItemsFromFile) here if they interact with Supabase
 };

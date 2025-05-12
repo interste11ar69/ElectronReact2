@@ -1,0 +1,75 @@
+/* src/DataManagementPage.css */
+
+.data-management-page {
+    padding-top: calc(var(--spacing-unit) * 3); /* Add some top padding if not inheriting from .page-container */
+}
+
+.data-management-page .page-header-alt h1 {
+    font-size: 1.8em;
+    color: var(--color-text-dark);
+    font-weight: 700;
+    margin-bottom: calc(var(--spacing-unit) * 1); /* Smaller bottom margin */
+    text-align: left !important;
+    border-bottom: none !important;
+}
+
+.tasks-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: calc(var(--spacing-unit) * 4);
+    margin-top: calc(var(--spacing-unit) * 2);
+}
+
+.task-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    padding: calc(var(--spacing-unit) * 5); /* More padding */
+    border-left: 5px solid var(--color-accent-gold); /* Accent border */
+}
+
+.task-card.disabled {
+    opacity: 0.6;
+    background-color: var(--color-background-main); /* Slightly different background for disabled */
+    border-left-color: var(--color-border-strong);
+}
+.task-card.disabled h2 {
+    color: var(--color-text-light);
+}
+.task-card.disabled .task-description {
+    color: var(--color-text-light);
+}
+
+
+.task-card .task-icon {
+    font-size: 3em; /* Larger icon */
+    color: var(--color-primary-dark);
+    margin-bottom: calc(var(--spacing-unit) * 3);
+    line-height: 1;
+}
+.task-card.disabled .task-icon {
+    color: var(--color-text-light);
+}
+
+.task-card h2 {
+    font-size: 1.3em;
+    margin-top: 0;
+    margin-bottom: calc(var(--spacing-unit) * 2);
+    border-bottom: none; /* No border under card titles */
+    color: var(--color-text-dark);
+}
+
+.task-card .task-description {
+    font-size: 0.9em;
+    color: var(--color-text-medium);
+    margin-bottom: calc(var(--spacing-unit) * 4);
+    flex-grow: 1; /* Makes description take available space push button down */
+    min-height: 60px; /* Ensure some minimum height for description */
+}
+
+.task-card .button {
+    width: 100%;
+    max-width: 200px; /* Limit button width */
+    padding: calc(var(--spacing-unit) * 1.75) calc(var(--spacing-unit) * 3);
+}

@@ -15,6 +15,7 @@ import BulkUpdatePage from './BulkUpdatePage';
 import InitialImportPage from './InitialImportPage';
 import CustomerManagementPage from './CustomerManagementPage';
 import CustomerFormPage from './CustomerFormPage';
+import DataManagementPage from './DataManagementPage';
 
 // Placeholder pages for future sidebar links (optional, for testing navigation)
 // const UsersPage = () => <div className="container page-container" style={{padding: '20px'}}><h1 style={{textAlign: 'left'}}>Users Management (WIP)</h1></div>;
@@ -112,6 +113,7 @@ function AppRouter() {
                         <>
                             <Route path="/analytics" element={<AnalyticsPage />} />
                             <Route path="/bulk-update" element={<BulkUpdatePage />} />
+                            <Route path="/data-management" element={<DataManagementPage />} />
                             <Route path="/initial-import" element={<InitialImportPage />} />
                             <Route path="/customers" element={<CustomerManagementPage currentUser={currentUser} />} />
                             <Route path="/customers/new" element={<CustomerFormPage currentUser={currentUser} />} />

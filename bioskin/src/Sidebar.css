@@ -1,97 +1,141 @@
 /* src/Sidebar.css */
 .sidebar {
   width: 260px;
-  background-color: var(--color-primary-dark); /* Changed */
-  color: var(--color-primary-light); /* Changed */
+  background-color: var(--color-primary-dark);
+  color: var(--color-primary-light);
   display: flex;
   flex-direction: column;
   height: 100vh;
   position: fixed;
   left: 0;
   top: 0;
-  box-shadow: 3px 0 8px rgba(0,0,0,0.15); /* Slightly stronger shadow */
+  box-shadow: 3px 0 8px rgba(0,0,0,0.15);
   font-family: var(--font-family-sans);
-  z-index: 100; /* Ensure sidebar is on top */
+  z-index: 100;
+  /* *** ADDED: This is crucial for the negative margin trick to work *** */
+  overflow: hidden;
 }
 
 .sidebar-header {
   padding: 25px 20px;
   text-align: center;
   border-bottom: 1px solid rgba(245, 240, 232, 0.1);
-  /* Add flexbox to center logo and title vertically */
   display: flex;
-  flex-direction: column; /* Stack logo above title */
+  flex-direction: column;
   align-items: center;
+  /* *** ADDED: Prevent header/footer from shrinking if content is too long *** */
+  flex-shrink: 0;
 }
 
-/* ADD OR MODIFY THIS RULE FOR THE LOGO */
 .sidebar-logo {
-  width: 70px; /* Adjust size to match screenshot */
-  height: 70px; /* Adjust size to match screenshot */
-  border-radius: 50%; /* Make it circular */
-  object-fit: cover; /* Adjust if logo aspect ratio isn't square */
-  margin-bottom: 15px; /* Space between logo and title */
-  /* Optional: Add a subtle border if needed */
-  /* border: 1px solid rgba(245, 240, 232, 0.2); */
+  width: 70px;
+  height: 70px;
+  border-radius: 50%;
+  object-fit: cover;
+  margin-bottom: 15px;
 }
 
 .sidebar-header h3 {
-  margin: 0; /* Remove default margins */
+  margin: 0;
   color: var(--color-primary-light);
-  font-size: 1.7em; /* Adjust as needed */
+  font-size: 1.7em;
   font-weight: 600;
 }
 
 .sidebar-nav {
-  flex-grow: 1;
-  overflow-y: auto;
+  flex-grow: 1;         /* Allows it to take available vertical space */
+  overflow-y: auto;     /* Makes it scrollable if content exceeds its height */
   padding-top: 15px;
+
+  /* --- HIDE SCROLLBAR TRICK (Technique 1) --- */
+  /* 1. Add padding to the right to make space for the scrollbar.
+     This value should be roughly the width of a typical scrollbar.
+     Adjust if scrollbar is wider/narrower on your OS. Common values are 15px to 20px. */
+  padding-right: 17px;
+  /* 2. Use a negative margin to pull the element back, hiding the padded area
+     (and thus the scrollbar that lives in that padded area) from view.
+     The parent (.sidebar) needs overflow:hidden for this to work. */
+  margin-right: -17px; /* Must match padding-right */
+  /* --- END OF HIDE SCROLLBAR TRICK --- */
+
+  /* Optional: Style scrollbar for Webkit browsers for a more refined look if it *does* peek */
+  &::-webkit-scrollbar {
+    width: 6px; /* Make scrollbar thinner */
+  }
+  &::-webkit-scrollbar-track {
+    background: transparent; /* Optional: make track invisible */
+  }
+  &::-webkit-scrollbar-thumb {
+    background-color: rgba(245, 240, 232, 0.25); /* Subtle thumb color */
+    border-radius: 10px;
+  }
+  &::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(245, 240, 232, 0.4);
+  }
+
+  /* Optional: Style scrollbar for Firefox */
+  scrollbar-width: thin; /* Makes scrollbar thinner in Firefox */
+  scrollbar-color: rgba(245, 240, 232, 0.25) transparent; /* thumb color and track color for Firefox */
 }
 
 .sidebar-nav ul {
   list-style: none;
   padding: 0;
   margin: 0;
+  /* The padding-right on .sidebar-nav means the content of ul
+     will naturally be away from where the scrollbar *would have been*.
+     If you find the text too far from the actual edge of the sidebar,
+     you could add a negative margin-right to the ul to compensate partially,
+     but test the default behavior first. It's often fine.
+     e.g., margin-right: -17px; (but this would make the scrollbar visible again if not careful)
+     It's usually better to adjust the padding on 'li a' if needed, or accept the slight inset.
+  */
 }
 
 .sidebar-nav li a {
   display: flex;
   align-items: center;
+  /* The padding-right on .sidebar-nav (17px) is effectively 'outside' this padding.
+     So, the content within 'a' will be 25px from the scrollbar area.
+     If the sidebar width is 260px, and scrollbar area is 17px,
+     visible content area is 260-17 = 243px.
+     The text is 25px from the right of that 243px area.
+     This is generally acceptable. */
   padding: 14px 25px;
-  color: var(--color-primary-light); /* Changed */
+  color: var(--color-primary-light);
   text-decoration: none;
   transition: background-color 0.2s ease, color 0.2s ease, border-left-color 0.2s ease;
   font-size: 1em;
   font-weight: 500;
-  opacity: 0.8; /* Slightly dimmer inactive links */
-  border-left: 4px solid transparent;
+  opacity: 0.8;
+  border-left: 4px solid transparent; /* Important for layout consistency on hover/active */
 }
 
 .sidebar-nav li a:hover {
-  background-color: rgba(245, 240, 232, 0.05); /* Subtle hover with primary-light alpha */
-  color: #ffffff; /* Bright white on hover */
+  background-color: rgba(245, 240, 232, 0.05);
+  color: #ffffff;
   opacity: 1;
-  border-left-color: var(--color-accent-gold); /* Changed */
+  border-left-color: var(--color-accent-gold);
 }
 
-.sidebar-nav li.active a {
-    background-color: var(--color-accent-gold); /* Changed */
-    color: var(--color-primary-dark); /* Dark text on gold active bg */
+.sidebar-nav li a.active {
+    background-color: var(--color-accent-gold);
+    color: var(--color-primary-dark);
     font-weight: 600;
     opacity: 1;
-    border-left-color: var(--color-primary-light); /* Light border on gold */
+    border-left: 4px solid var(--color-primary-light);
 }
 
 .sidebar-nav li a svg {
-  margin-right: 15px; /* Increased spacing */
+  margin-right: 15px;
   font-size: 1.3em;
   min-width: 22px;
 }
 
 .nav-section-title {
-    padding: 15px 25px 8px;
-    font-size: 0.75em; /* Smaller section title */
-    color: var(--color-text-light); /* Using a variable from main palette */
+    padding: 15px 25px 8px; /* Consider if padding-right needs adjustment due to .sidebar-nav's padding */
+    font-size: 0.75em;
+    color: var(--color-text-light);
     text-transform: uppercase;
     font-weight: 600;
     margin-top: 15px;
@@ -102,14 +146,16 @@
 }
 
 .sidebar-footer {
-  padding: 20px; /* Increased padding */
+  padding: 20px;
   border-top: 1px solid rgba(245, 240, 232, 0.1);
+  /* *** ADDED: Prevent header/footer from shrinking if content is too long *** */
+  flex-shrink: 0;
 }
 
 .logout-button {
   background-color: transparent;
-  color: var(--color-primary-light); /* Changed */
-  border: 1px solid var(--color-primary-light); /* Changed */
+  color: var(--color-primary-light);
+  border: 1px solid var(--color-primary-light);
   padding: 12px 15px;
   width: 100%;
   text-align: left;
@@ -124,8 +170,8 @@
 }
 
 .logout-button:hover {
-  background-color: var(--color-status-danger); /* Changed */
-  border-color: var(--color-status-danger); /* Changed */
+  background-color: var(--color-status-danger);
+  border-color: var(--color-status-danger);
   color: white;
   opacity: 1;
 }
@@ -135,8 +181,8 @@
 }
 
 .sidebar-user-info {
-    font-size: 0.85em; /* Slightly larger */
-    color: var(--color-text-light); /* Changed */
+    font-size: 0.85em;
+    color: var(--color-text-light);
     text-align: center;
     margin-top: 15px;
 }

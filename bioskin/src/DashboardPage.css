@@ -150,13 +150,15 @@
 /* Activity Log Panel */
 .activity-log-panel.card {
     flex: 1;
-    min-width: 280px;
+    min-width: 350px;
     max-width: 350px;
-    height: fit-content;
+    max-height: 600px;
     padding: calc(var(--spacing-unit) * 4);
     border: 1px solid var(--color-border-soft);
-    border-left: 5px solid var(--dashboard-accent-yellow) !important; /* Uses updated yellow */
+    border-left: 5px solid var(--dashboard-accent-yellow) !important;
     margin-top: calc(var(--spacing-unit) * 5);
+    display: flex; /* Make the panel a flex container */
+    flex-direction: column; /* Stack title and list vertically */
 }
 
 .activity-log-panel h3 {
@@ -168,44 +170,54 @@
     padding-bottom: 0;
     border-bottom: none;
     text-align: left;
+    flex-shrink: 0; /* Header should not shrink */
 }
 
 .activity-log-panel ul {
-  list-style: none;
-  padding: 0;
-  margin: 0;
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    /* --- ADD THESE STYLES --- */
+    max-height: 500px; /* Or any desired height, e.g., 50vh, 30rem */
+    overflow-y: auto;  /* This enables the vertical scrollbar WHEN content exceeds max-height */
+    /* --- END OF ADDED STYLES --- */
+    flex-grow: 1; /* Allow the ul to take available space if panel has flexible height */
+    min-height: 0; /* Good practice for flex children that scroll */
 }
 
 .activity-log-panel ul li {
-  font-size: 0.9em;
-  margin-bottom: calc(var(--spacing-unit) * 2.5);
-  padding-bottom: calc(var(--spacing-unit) * 2.5);
-  border-bottom: 1px dashed var(--color-border-soft);
-  line-height: 1.5;
-  display: flex;
-  flex-direction: column;
+    font-size: 0.9em;
+    margin-bottom: calc(var(--spacing-unit) * 2.5);
+    padding-bottom: calc(var(--spacing-unit) * 2.5);
+    border-bottom: 1px dashed var(--color-border-soft);
+    line-height: 1.5;
+    display: flex;
+    flex-direction: column;
 }
 .activity-log-panel ul li:last-child {
-  border-bottom: none;
-  margin-bottom: 0;
-  padding-bottom: 0;
+    border-bottom: none;
+    margin-bottom: 0;
+    padding-bottom: 0;
 }
 .activity-log-panel .log-time {
-  color: var(--color-text-light);
-  display: block;
-  font-size: 0.85em;
-  margin-bottom: calc(var(--spacing-unit) * 0.5);
+    color: var(--color-text-light);
+    display: block;
+    font-size: 0.85em;
+    margin-bottom: calc(var(--spacing-unit) * 0.5);
 }
 .activity-log-panel .log-user {
-  font-weight: 600;
-  color: var(--color-text-medium);
-  margin-right: 4px;
+    font-weight: 600;
+    color: var(--color-text-medium);
+    margin-right: 4px;
 }
 .activity-log-panel .log-action {
-  color: var(--color-text-dark);
+    color: var(--color-text-dark);
 }
 .activity-log-panel .no-data-message {
-  font-size: 0.95em;
-  color: var(--color-text-light);
-  padding: var(--spacing-unit) 0;
+    font-size: 0.95em;
+    color: var(--color-text-light);
+    padding: var(--spacing-unit) 0;
+    /* If using flex on the panel, you might need to center this differently: */
+    margin: auto; /* Center placeholder if panel is flex and ul is hidden */
+    text-align: center;
 }

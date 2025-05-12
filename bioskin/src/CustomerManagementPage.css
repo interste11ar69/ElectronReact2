@@ -186,8 +186,3 @@
    padding: calc(var(--spacing-unit) * 2) calc(var(--spacing-unit) * 3.5);
    font-weight: 500;
 }
-
-/* Utility classes for text alignment (likely inherited from index.css) */
-/* .text-right { text-align: right !important; } */
-/* .text-center { text-align: center !important; } */
-/* .text-left { text-align: left !important; } */

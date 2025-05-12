@@ -16,6 +16,8 @@ import InitialImportPage from './InitialImportPage';
 import CustomerManagementPage from './CustomerManagementPage';
 import CustomerFormPage from './CustomerFormPage';
 import DataManagementPage from './DataManagementPage';
+import ReturnProcessingPage from './ReturnProcessingPage';
+import ReturnListPage from './ReturnListPage';
 
 // Placeholder pages for future sidebar links (optional, for testing navigation)
 // const UsersPage = () => <div className="container page-container" style={{padding: '20px'}}><h1 style={{textAlign: 'left'}}>Users Management (WIP)</h1></div>;
@@ -101,30 +103,34 @@ function AppRouter() {
                         </ProtectedRoute>
                     }
                 >
-                    {/* Child routes of Layout. These will render inside Layout's <Outlet /> */}
-                    <Route path="/" element={<DashboardPage />} /> {/* Default page after login */}
+                    {/* Child routes of Layout. Accessible to ALL logged-in users */}
+                    {/* Pass currentUser to DashboardPage */}
+                    <Route path="/" element={<DashboardPage currentUser={currentUser} />} /> {/* CORRECTED: Added currentUser prop */}
                     <Route path="/products" element={<ItemManagementPage currentUser={currentUser} />} />
+                    <Route path="/customers" element={<CustomerManagementPage currentUser={currentUser} />} />
+                    <Route path="/customers/new" element={<CustomerFormPage currentUser={currentUser} />} />
+                    <Route path="/customers/:id/edit" element={<CustomerFormPage currentUser={currentUser} />} />
 
-                    {/* Admin Only Routes: Conditionally render these routes */}
-                    {/* These routes are only defined if the currentUser has the 'admin' role. */}
-                     <Route path="/products/new" element={<ProductFormPage currentUser={currentUser} />} />
-                                        <Route path="/products/:id/edit" element={<ProductFormPage currentUser={currentUser} />} />
+                    {/* Routes for adding/editing products - Accessible to all logged-in users */}
+                    {/* CONFIRM: Is it okay for employees to add/edit products? If not, move these inside the admin block below. */}
+                    <Route path="/products/new" element={<ProductFormPage currentUser={currentUser} />} />
+                    <Route path="/products/:id/edit" element={<ProductFormPage currentUser={currentUser} />} />
+                    <Route path="/returns/process" element={<ReturnProcessingPage />} />
+                    <Route path="/returns" element={<ReturnListPage />} />
+                    {/* Admin Only Routes: */}
                     {currentUser?.role === 'admin' && (
                         <>
                             <Route path="/analytics" element={<AnalyticsPage />} />
                             <Route path="/bulk-update" element={<BulkUpdatePage />} />
                             <Route path="/data-management" element={<DataManagementPage />} />
                             <Route path="/initial-import" element={<InitialImportPage />} />
-                            <Route path="/customers" element={<CustomerManagementPage currentUser={currentUser} />} />
-                            <Route path="/customers/new" element={<CustomerFormPage currentUser={currentUser} />} />
-                            <Route path="/customers/:id/edit" element={<CustomerFormPage currentUser={currentUser} />} />
+                            {/* If only admins can add/edit products, move the product form routes HERE */}
                         </>
                     )}
 
                 </Route>
 
                 {/* Catch-all Route */}
-                {/* If no other route matches, redirect to the main page if logged in, or to login if not. */}
                 <Route path="*" element={<Navigate to={currentUser ? "/" : "/login"} replace />} />
 
             </Routes>

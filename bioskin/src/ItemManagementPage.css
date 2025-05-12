@@ -227,3 +227,12 @@ select.filter-dropdown.standalone-filter.storage-filter-full-width {
    padding: calc(var(--spacing-unit) * 2) calc(var(--spacing-unit) * 3.5);
    font-weight: 500;
 }
+/* In ItemManagementPage.css or index.css */
+#itemTable thead th[onClick] { /* Targets th elements that have an onClick prop (our sortable ones) */
+    cursor: pointer;
+    user-select: none; /* Prevents text selection when clicking to sort */
+}
+
+#itemTable thead th[onClick]:hover {
+    background-color: var(--color-table-row-hover); /* Or a slightly darker header bg */
+}

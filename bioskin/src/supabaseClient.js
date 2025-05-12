@@ -99,21 +99,36 @@ export const db = {
   // These are NOT Supabase Auth functions. The IPC handlers in main.js will manage this.
 
   // --- ITEM MANAGEMENT FUNCTIONS ---
-  async getItems(filters = {}) {
-    if (!supabase) return Promise.reject(new Error("Supabase client not initialized."));
-    try {
-      let query = supabase.from('items').select('*');
-      if (filters.category) query = query.eq('category', filters.category);
-      if (filters.storageLocation) query = query.eq('storage_location', filters.storageLocation);
-      if (filters.searchTerm) query = query.or(`name.ilike.%${filters.searchTerm}%,sku.ilike.%${filters.searchTerm}%`);
-      const { data, error } = await query;
-      if (error) throw error;
-      return data || []; // Ensure an array is always returned
-    } catch (error) {
-      console.error('Error in getItems:', error);
-      throw error;
-    }
-  },
+  async getItems(filters = {}) { // filters can now include sortBy and sortOrder
+          if (!supabase) return Promise.reject(new Error("Supabase client not initialized."));
+          try {
+              let query = supabase.from('items').select('*');
+
+              // Apply existing filters
+              if (filters.category) query = query.eq('category', filters.category);
+              if (filters.storageLocation) query = query.eq('storage_location', filters.storageLocation);
+              if (filters.searchTerm) query = query.or(`name.ilike.%${filters.searchTerm}%,sku.ilike.%${filters.searchTerm}%`);
+
+              // --- ADD SORTING LOGIC ---
+              const sortBy = filters.sortBy || 'created_at'; // Default sort column
+              const sortOrderAsc = filters.sortOrder === 'asc'; // Default to 'desc' if not 'asc'
+
+              query = query.order(sortBy, { ascending: sortOrderAsc });
+              // --- END SORTING LOGIC ---
+
+              const { data, error } = await query;
+              if (error) {
+                  console.error('[db.getItems] Supabase error:', error);
+                  throw error;
+              }
+              return data || [];
+          } catch (error) {
+              console.error('[db.getItems] General error:', error);
+              // Rethrow or return a structured error for the main process to handle
+              // For consistency, let's assume main process will catch and structure it.
+              throw error;
+          }
+      },
   async getItemById(id) {
     if (!supabase) return Promise.reject(new Error("Supabase client not initialized."));
      try {
@@ -182,34 +197,128 @@ export const db = {
   },
 
   // --- ANALYTICS FUNCTIONS ---
-  async getInventorySummary() {
-    if (!supabase) return { success: false, message: "Database client not initialized.", summary: null };
-    try {
-      const { data, error } = await supabase.from('items').select('quantity, cost_price');
-      if (error) throw error;
-      const summary = (data || []).reduce((acc, item) => {
-        acc.totalItems = (acc.totalItems || 0) + 1;
-        acc.totalQuantity = (acc.totalQuantity || 0) + (Number(item.quantity) || 0);
-        acc.totalValue = (acc.totalValue || 0) + ((Number(item.quantity) || 0) * (Number(item.cost_price) || 0));
-        return acc;
-      }, { totalItems: 0, totalQuantity: 0, totalValue: 0 });
-      return { success: true, summary };
-    } catch (error) {
-      console.error('Error in getInventorySummary:', error);
-      return { success: false, message: error.message || "Failed to get summary.", summary: null };
-    }
-  },
-  async getLowStockItems(threshold = 10) {
-    if (!supabase) return { success: false, message: "Database client not initialized.", items: [] };
-    try {
-      const { data, error } = await supabase.from('items').select('name, quantity').lt('quantity', threshold);
-      if (error) throw error;
-      return { success: true, items: data || [] };
-    } catch (error) {
-      console.error('Error in getLowStockItems:', error);
-      return { success: false, message: error.message || "Failed to get low stock items.", items: [] };
-    }
-  },
+ async getInventorySummary() {
+         if (!supabase) return { success: false, message: "Database client not initialized.", summary: null };
+         try {
+             const { data, error, count } = await supabase
+                 .from('items')
+                 .select('quantity, cost_price', { count: 'exact' }); // Get total item count efficiently
+
+             if (error) throw error;
+
+             const summaryData = (data || []).reduce((acc, item) => {
+                 acc.totalQuantity += (Number(item.quantity) || 0);
+                 acc.totalValue += ((Number(item.quantity) || 0) * (Number(item.cost_price) || 0));
+                 return acc;
+             }, { totalQuantity: 0, totalValue: 0 });
+
+             return {
+                 success: true,
+                 summary: {
+                     totalUniqueItems: count || 0, // Total distinct item entries
+                     totalStockQuantity: summaryData.totalQuantity,
+                     estimatedTotalValue: summaryData.totalValue
+                 }
+             };
+         } catch (error) {
+             console.error('[db.getInventorySummary] Error:', error);
+             return { success: false, message: error.message || "Failed to get summary.", summary: null };
+         }
+     },
+
+     // getLowStockItems: Stays the same.
+     async getLowStockItems(threshold = 10) {
+         if (!supabase) return { success: false, message: "Database client not initialized.", items: [] };
+         try {
+             const { data, error } = await supabase
+                 .from('items')
+                 .select('id, name, sku, quantity, category') // Select a few more useful fields
+                 .lt('quantity', threshold)
+                 .order('quantity', { ascending: true }); // Show lowest first
+
+             if (error) throw error;
+             return { success: true, items: data || [] };
+         } catch (error) {
+             console.error('[db.getLowStockItems] Error:', error);
+             return { success: false, message: error.message || "Failed to get low stock items.", items: [] };
+         }
+     },
+
+     // NEW: Get inventory breakdown by category
+     async getInventoryByCategory() {
+         if (!supabase) return { success: false, message: "Database client not initialized.", data: [] };
+         try {
+             // This requires a custom SQL query or multiple queries if Supabase JS client doesn't directly support complex GROUP BY with SUM
+             // For simplicity with JS client, we can fetch relevant data and aggregate, or use an RPC.
+             // Let's use an RPC for efficiency. (See Step 1.1 below to create it in SQL)
+
+             const { data, error } = await supabase.rpc('get_inventory_summary_by_category');
+
+             if (error) {
+                 console.error('[db.getInventoryByCategory] RPC error:', error);
+                 throw error;
+             }
+             return { success: true, data: data || [] };
+         } catch (error) {
+             console.error('[db.getInventoryByCategory] Error:', error);
+             return { success: false, message: error.message || "Failed to get category breakdown.", data: [] };
+         }
+     },
+
+     // NEW: Get inventory breakdown by storage location
+     async getInventoryByStorageLocation() {
+         if (!supabase) return { success: false, message: "Database client not initialized.", data: [] };
+         try {
+             // Create RPC: get_inventory_summary_by_storage (See Step 1.1 below)
+             const { data, error } = await supabase.rpc('get_inventory_summary_by_storage');
+
+             if (error) {
+                 console.error('[db.getInventoryByStorageLocation] RPC error:', error);
+                 throw error;
+             }
+             return { success: true, data: data || [] };
+         } catch (error) {
+             console.error('[db.getInventoryByStorageLocation] Error:', error);
+             return { success: false, message: error.message || "Failed to get storage breakdown.", data: [] };
+         }
+     },
+
+     // Placeholder for sales-related analytics (requires sales data)
+     async getTodaysSalesTotal() {
+         // In a real app, query a 'sales' or 'orders' table for today's date
+         if (!supabase) return { success: false, message: "Database client not initialized.", total: 0 };
+         console.warn("[db.getTodaysSalesTotal] This is a placeholder. Sales data table needed.");
+         // Simulate for now
+         return { success: true, total: Math.floor(Math.random() * 20000) + 5000 }; // Random sales
+     },
+
+     async getNewOrdersCount() {
+         // In a real app, query 'sales' or 'orders' for new/unprocessed orders
+         if (!supabase) return { success: false, message: "Database client not initialized.", count: 0 };
+         console.warn("[db.getNewOrdersCount] This is a placeholder. Orders/Sales data table needed.");
+         // Simulate for now
+         return { success: true, count: Math.floor(Math.random() * 30) }; // Random count
+     },
+
+     async getTopSellingProductsByQuantity(limit = 5, dateRange = null) {
+         // Requires a 'sales_items' table or similar, joining with 'items'
+         // and aggregating quantity sold.
+         if (!supabase) return { success: false, message: "Database client not initialized.", products: [] };
+         console.warn("[db.getTopSellingProductsByQuantity] This is a placeholder. Sales data table needed.");
+         // Simulate for now - returning top N most stocked items as a proxy
+          try {
+             const { data, error } = await supabase
+                 .from('items')
+                 .select('name, category, quantity')
+                 .order('quantity', { ascending: false })
+                 .limit(limit);
+             if (error) throw error;
+             // This isn't "top selling" but "most stocked", adapt chart label accordingly
+             return { success: true, products: data || [], isProxyData: true, proxyType: "Most Stocked" };
+         } catch (error) {
+             return { success: false, message: error.message, products: [] };
+         }
+     },
   // --- CUSTOMER MANAGEMENT FUNCTIONS ---
     async getCustomers(filters = {}) {
       if (!supabase) return Promise.reject(new Error("Supabase client not initialized."));
@@ -297,6 +406,200 @@ export const db = {
         return { success: false, message: error.message || "Failed to delete customer." };
       }
     },
+     async getAllItemsForExport() {
+            if (!supabase) return Promise.reject(new Error("Supabase client not initialized."));
+            try {
+                // Select the columns you want in your CSV export
+                const { data, error } = await supabase
+                    .from('items')
+                    .select('sku, name, variant, description, category, storage_location, quantity, cost_price, status, created_at, updated_at') // Customize columns as needed
+                    .order('name', { ascending: true }); // Optional: order the export
+
+                if (error) throw error;
+                console.log(`[db.getAllItemsForExport] Fetched ${data?.length ?? 0} items for export.`);
+                return data || []; // Ensure an array is always returned
+            } catch (error) {
+                console.error('[db.getAllItemsForExport] Error fetching items for export:', error);
+                throw error; // Re-throw to be caught by the caller in main.js
+            }
+        },
+        // --- ACTIVITY LOG FUNCTIONS ---
+            async addActivityLogEntry(entryData) {
+                // entryData should be an object like { user_identifier: '...', action: '...', details: '...' }
+                if (!supabase) return { success: false, message: "Database client not initialized." };
+                try {
+                    const { data, error } = await supabase
+                        .from('activity_log')
+                        .insert([entryData]) // Insert expects an array of objects
+                        .select() // Optionally select the inserted row back
+                        .single(); // Assuming you insert one at a time
+
+                    if (error) {
+                        console.error('[db.addActivityLogEntry] Supabase insert error:', error);
+                        throw error; // Let the caller handle it
+                    }
+                    // console.log('[db.addActivityLogEntry] Log entry added:', data);
+                    return { success: true, entry: data };
+                } catch (error) {
+                    console.error('[db.addActivityLogEntry] Error:', error);
+                    return { success: false, message: error.message || "Failed to add log entry." };
+                }
+            },
+
+            async getActivityLogEntries(limit = 50) { // Default limit of 50
+                if (!supabase) return Promise.reject(new Error("Supabase client not initialized."));
+                try {
+                    const { data, error } = await supabase
+                        .from('activity_log')
+                        .select('*') // Select all columns
+                        .order('created_at', { ascending: false }) // Get newest first
+                        .limit(limit); // Limit the number of results
+
+                    if (error) {
+                        console.error('[db.getActivityLogEntries] Supabase select error:', error);
+                        throw error;
+                    }
+                    // console.log(`[db.getActivityLogEntries] Fetched ${data?.length ?? 0} log entries.`);
+                    return data || []; // Return array or empty array
+                } catch (error) {
+                    console.error('[db.getActivityLogEntries] Error:', error);
+                    throw error; // Re-throw to be caught by the caller
+                }
+            },
+             // --- RETURN FUNCTIONS ---
+                async createReturnRecord(returnData) {
+                    // returnData should include: item_id, quantity_returned, reason, condition,
+                    // Optional: customer_id, notes, processed_by_user_id
+                    if (!supabase) return { success: false, message: "Database client not initialized." };
+                    try {
+                        // We won't set inventory_adjusted here; main.js logic will handle that update separately if needed.
+                        const { data, error } = await supabase
+                            .from('returns')
+                            .insert([returnData])
+                            .select() // Select the created record
+                            .single();
+
+                        if (error) {
+                            console.error('[db.createReturnRecord] Supabase insert error:', error);
+                            throw error;
+                        }
+                        return { success: true, returnRecord: data };
+                    } catch (error) {
+                        console.error('[db.createReturnRecord] Error:', error);
+                        return { success: false, message: error.message || "Failed to create return record." };
+                    }
+                },
+
+                // Function to specifically increase inventory for a returned item
+                // This provides better transaction control than just calling updateItem generically
+                async incrementItemQuantity(itemId, quantityToAdd) {
+                     if (!supabase) return { success: false, message: "Database client not initialized." };
+                     if (!itemId || quantityToAdd <= 0) {
+                         return { success: false, message: "Invalid item ID or quantity to add." };
+                     }
+                    try {
+                        // Use Supabase RPC function for atomic increment is BEST PRACTICE
+                        // Let's create one in SQL (See Step 2.1 below) and call it here.
+                        const { data, error } = await supabase.rpc('increment_item_quantity', {
+                            p_item_id: itemId,
+                            p_quantity_to_add: quantityToAdd
+                        });
+
+                        if (error) {
+                            console.error('[db.incrementItemQuantity] Supabase RPC error:', error);
+                            throw error;
+                        }
+
+                         // The RPC function might return the new quantity or just success
+                         console.log(`[db.incrementItemQuantity] RPC call successful for item ${itemId}. Result:`, data);
+                         // Check if the RPC returned a specific value indicating success if needed
+                         // For now, assume no error means success.
+                         return { success: true, message: "Quantity incremented." };
+
+                        /* // --- Alternative (Less Safe - Risk of Race Condition) ---
+                        // 1. Get current quantity
+                        const { data: currentItem, error: fetchError } = await supabase
+                            .from('items')
+                            .select('quantity')
+                            .eq('id', itemId)
+                            .single();
+
+                        if (fetchError) throw fetchError;
+                        if (!currentItem) throw new Error(`Item with ID ${itemId} not found for quantity update.`);
+
+                        // 2. Calculate new quantity
+                        const newQuantity = (currentItem.quantity || 0) + quantityToAdd;
+
+                        // 3. Update item with new quantity
+                        const { error: updateError } = await supabase
+                            .from('items')
+                            .update({ quantity: newQuantity })
+                            .eq('id', itemId);
+
+                        if (updateError) throw updateError;
+                        return { success: true, newQuantity: newQuantity };
+                        */
+
+                    } catch (error) {
+                        console.error('[db.incrementItemQuantity] Error:', error);
+                        return { success: false, message: error.message || "Failed to increment item quantity." };
+                    }
+                },
+
+                // Function to update the return record flag (optional but good practice)
+                async markReturnInventoryAdjusted(returnId) {
+                     if (!supabase) return { success: false, message: "Database client not initialized." };
+                     try {
+                         const { error } = await supabase
+                            .from('returns')
+                            .update({ inventory_adjusted: true })
+                            .eq('id', returnId);
+                         if (error) throw error;
+                         return { success: true };
+                     } catch(error) {
+                          console.error('[db.markReturnInventoryAdjusted] Error:', error);
+                          return { success: false, message: error.message || "Failed to mark return adjusted." };
+                     }
+                },
+
+                // Function to fetch return records (for a potential history page)
+                async getReturnRecords(filters = {}, limit = 50) {
+                    if (!supabase) return Promise.reject(new Error("Supabase client not initialized."));
+                    try {
+                         let query = supabase
+                            .from('returns')
+                            // Select specific columns and related data
+                            .select(`
+                                id,
+                                created_at,
+                                quantity_returned,
+                                reason,
+                                condition,
+                                notes,
+                                inventory_adjusted,
+                                item:items ( id, name, sku ),
+                                customer:customers ( id, full_name ),
+                                user:users ( id, username )
+                            `)
+                            .order('created_at', { ascending: false })
+                            .limit(limit);
+
+                        // Add filters if needed (e.g., by date range, item_id, customer_id)
+                        // if (filters.itemId) query = query.eq('item_id', filters.itemId);
+                        // if (filters.customerId) query = query.eq('customer_id', filters.customerId);
+
+                        const { data, error } = await query;
+
+                        if (error) {
+                            console.error('[db.getReturnRecords] Supabase select error:', error);
+                            throw error;
+                        }
+                        return data || [];
+                    } catch (error) {
+                         console.error('[db.getReturnRecords] Error:', error);
+                         throw error;
+                    }
+                },
 
   // Implement your file processing db functions (processBulkUpdate, importInitialItemsFromFile) here if they interact with Supabase
 };

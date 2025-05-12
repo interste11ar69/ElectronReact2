@@ -65,11 +65,6 @@ function CustomerManagementPage({ currentUser }) {
         navigate('/customers/new');
     };
 
-    const handleGenerateReport = () => {
-        alert("Customer report generation feature coming soon!");
-        // Potentially: window.electronAPI.generateCustomerReport(filters);
-    };
-
     const handleDeleteCustomer = async (customerId) => {
         if (window.confirm('Are you sure you want to delete this customer? This action cannot be undone.')) {
             setError(null);
@@ -141,9 +136,6 @@ function CustomerManagementPage({ currentUser }) {
                 <div className="page-actions-bar">
                     <button className="button" onClick={navigateToAddNew}>
                         <FaPlus style={{ marginRight: '8px' }} /> Add New Customer
-                    </button>
-                    <button className="button" onClick={handleGenerateReport}>
-                        <FaFileAlt style={{ marginRight: '8px' }} /> Generate Report
                     </button>
                 </div>
             </div>

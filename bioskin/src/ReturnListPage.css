@@ -1,0 +1,281 @@
+/* src/ReturnListPage.css */
+
+/* src/ReturnListPage.css */
+
+/* Main page structure */
+.return-list-page {
+    display: flex;
+    flex-direction: column;
+    height: 100%; /* Helps manage child element heights */
+    /* Assuming .page-container in parent provides padding */
+}
+
+/* Page Header ("Return History" title) */
+.return-list-page .page-header-alt {
+    flex-shrink: 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: calc(var(--spacing-unit) * 3);
+    padding-bottom: calc(var(--spacing-unit) * 3);
+    border-bottom: 1px solid var(--color-border-soft);
+}
+
+.return-list-page .page-header-alt h1 {
+    font-size: 1.8em;
+    color: var(--color-text-dark);
+    font-weight: 700;
+    margin: 0;
+    text-align: left !important;
+    border-bottom: none !important;
+}
+
+/* Wrapper for the main content block (table area) */
+.return-list-page .content-block-wrapper {
+    flex-grow: 1;
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--color-accent-gold) !important; /* Or use --color-border-soft if preferred */
+    padding: calc(var(--spacing-unit) * 4);
+    background-color: var(--color-surface);
+    border-radius: var(--border-radius-rounded);
+    box-shadow: var(--box-shadow);
+    overflow: hidden; /* Contain the scrolling table section */
+}
+
+/* Error Message Styling (assuming .card class is applied in JS) */
+.return-list-page .error-message {
+    color: var(--color-status-danger);
+    border: 1px solid var(--color-status-danger);
+    background-color: rgba(211, 47, 47, 0.05);
+    margin-bottom: 1rem;
+    padding: 1rem;
+    border-radius: var(--border-radius); /* Use global radius */
+    /* Add .card styles here if not applied globally or in JS */
+    /* background-color: var(--color-surface); */
+    /* box-shadow: var(--box-shadow); */
+}
+
+
+/* List Section (Scrollable Area) */
+.return-list-page .list-section {
+    /* Adjust max-height as needed for scrolling vs page height */
+    flex-grow: 1; /* Allow section to grow */
+    max-height: 70vh; /* Set a max height before scrolling */
+    overflow-y: auto; /* Enable vertical scroll */
+    min-height: 200px; /* Ensure it's visible even if empty */
+    border: 1px solid var(--color-border-soft);
+    border-radius: var(--border-radius);
+    padding: 0; /* Remove padding if table container handles it */
+    display: flex; /* To help center loading placeholder */
+    flex-direction: column; /* Stack placeholder or table */
+}
+
+/* Loading Placeholder (inside .list-section) */
+.return-list-page .loading-placeholder {
+    text-align: center;
+    padding: 2rem 1rem;
+    color: var(--color-text-light);
+    font-style: italic;
+    margin: auto; /* Center vertically and horizontally within flex container */
+}
+
+/* Table Container */
+.return-list-page .table-container {
+    width: 100%;
+    overflow-x: auto; /* Enable horizontal scroll if needed */
+}
+
+/* Return Table Styling */
+#returnTable {
+    width: 100%;
+    margin-bottom: 0 !important; /* Important when inside a scroll container */
+    color: var(--color-text-dark);
+    border-collapse: collapse;
+    border-spacing: 0;
+}
+
+#returnTable th,
+#returnTable td {
+    padding: calc(var(--spacing-unit) * 2);
+    vertical-align: middle;
+    border-top: 1px solid var(--color-border-soft);
+    border-bottom: 1px solid var(--color-border-soft);
+    border-left: none;
+    border-right: none;
+    text-align: left;
+    font-size: 0.9em; /* Standard font size for table data */
+    white-space: nowrap; /* Prevent text wrapping by default */
+}
+
+/* Allow specific columns to wrap if necessary */
+/* Example: Uncomment and adjust column index (nth-child) if needed */
+/*
+#returnTable td:nth-child(5), /* Reason Column */
+/* #returnTable td:nth-child(6) { /* Condition Column */
+/*    white-space: normal;
+/* }
+*/
+
+#returnTable thead th {
+    position: sticky; /* Make header sticky during vertical scroll */
+    top: 0; /* Stick to the top of the scrolling container (.list-section) */
+    z-index: 1; /* Ensure header stays above table body */
+    vertical-align: bottom;
+    border-bottom: 2px solid var(--color-border-strong);
+    border-top: none;
+    background-color: var(--color-table-header-bg); /* Header background */
+    font-weight: 600;
+    color: var(--color-text-medium);
+    white-space: nowrap; /* Keep header text on one line */
+}
+
+#returnTable tbody tr:hover {
+    background-color: var(--color-table-row-hover);
+}
+
+/* Utility Classes */
+.text-center {
+    text-align: center !important;
+}
+.text-right {
+    text-align: right !important;
+}
+/* Add .text-left if needed, though it's the default for td */
+
+/* Specific Status Styles */
+.status-yes {
+    color: var(--color-status-success);
+    font-weight: bold;
+}
+
+.status-no {
+    color: var(--color-text-light);
+    /* Optional: font-style: italic; */
+}
+
+/* Add specific styles if needed */
+.status-yes {
+    color: var(--color-status-success);
+    font-weight: bold;
+}
+.status-no {
+     color: var(--color-text-light);
+     /* font-style: italic; */
+}
+
+/* Example (Copying structure from CustomerManagementPage.css): */
+
+.return-list-page {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+
+.return-list-page .page-header-alt {
+    flex-shrink: 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: calc(var(--spacing-unit) * 3);
+    padding-bottom: calc(var(--spacing-unit) * 3);
+    border-bottom: 1px solid var(--color-border-soft);
+}
+
+.return-list-page .page-header-alt h1 {
+    font-size: 1.8em;
+    color: var(--color-text-dark);
+    font-weight: 700;
+    margin: 0;
+    text-align: left !important;
+    border-bottom: none !important;
+}
+
+.return-list-page .content-block-wrapper {
+    flex-grow: 1;
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--color-accent-gold) !important; /* Or soft border */
+    padding: calc(var(--spacing-unit) * 4);
+    background-color: var(--color-surface);
+    border-radius: var(--border-radius-rounded);
+    box-shadow: var(--box-shadow);
+    overflow: hidden;
+}
+
+.return-list-page .error-message { /* Assumes .card styles are global */
+    color: var(--color-status-danger);
+    border-color: var(--color-status-danger);
+    background-color: rgba(211, 47, 47, 0.05);
+    margin-bottom: 1rem;
+    padding: 1rem;
+}
+
+
+.return-list-page .list-section {
+    /* Adjust max-height as needed for scrolling vs page height */
+    max-height: 70vh; /* Example */
+    overflow-y: auto;
+    min-height: 200px;
+    border: 1px solid var(--color-border-soft);
+    border-radius: var(--border-radius);
+    padding: 0;
+}
+
+.return-list-page .loading-placeholder {
+    text-align: center;
+    padding: 2rem 1rem;
+    color: var(--color-text-light);
+    font-style: italic;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100px;
+}
+
+.return-list-page .table-container {
+     width: 100%;
+     height: 100%;
+}
+
+
+#returnTable {
+    width: 100%;
+    margin-bottom: 0 !important;
+    color: var(--color-text-dark);
+    border-collapse: collapse;
+    border-spacing: 0;
+}
+
+#returnTable th,
+#returnTable td {
+    padding: calc(var(--spacing-unit) * 2);
+    vertical-align: middle;
+    border-top: 1px solid var(--color-border-soft);
+    border-bottom: 1px solid var(--color-border-soft);
+    border-left: none;
+    border-right: none;
+    text-align: left;
+    font-size: 0.9em; /* Slightly smaller font for list view */
+    white-space: nowrap; /* Prevent wrapping initially */
+}
+/* Allow wrapping for specific columns if needed */
+/* #returnTable td:nth-child(5), /* Reason */
+/* #returnTable td:nth-child(6) { /* Condition */
+/*    white-space: normal; */
+/* } */
+
+
+#returnTable thead th {
+    vertical-align: bottom;
+    border-bottom: 2px solid var(--color-border-strong);
+    border-top: none;
+    background-color: var(--color-table-header-bg);
+    font-weight: 600;
+    color: var(--color-text-medium);
+    white-space: nowrap;
+}
+
+#returnTable tbody tr:hover {
+    background-color: var(--color-table-row-hover);
+}

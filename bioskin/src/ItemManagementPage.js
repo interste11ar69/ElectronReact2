@@ -6,7 +6,7 @@ import {
     FaSearch,
     FaThLarge,
     FaPlus,
-    // FaFileAlt // Not used in this file, can be removed if not planned for export button here
+    FaArchive // New icon for archiving
 } from 'react-icons/fa';
 import './ItemManagementPage.css';
 
@@ -20,6 +20,9 @@ function ItemManagementPage({ currentUser }) {
     const [selectedCategory, setSelectedCategory] = useState('');
     const [selectedStorage, setSelectedStorage] = useState('');
     const [debouncedSearchTerm, setDebouncedSearchTerm] = useState(searchTerm);
+    // --- MODIFICATION START: Filter for archived items ---
+    const [showArchived, setShowArchived] = useState(false); // New state for filter
+    // --- MODIFICATION END ---
 
     // State for sorting
     const [sortBy, setSortBy] = useState('created_at');
@@ -43,11 +46,31 @@ function ItemManagementPage({ currentUser }) {
 
         const filterPayload = {
             category: selectedCategory || null,
-            storageLocation: selectedStorage || null, // Will send the selected storage filter value
+            storageLocation: selectedStorage || null,
             searchTerm: debouncedSearchTerm || null,
             sortBy: sortBy,
-            sortOrder: sortOrder
+            sortOrder: sortOrder,
+            // --- MODIFICATION START: Pass archive filter status to backend ---
+            is_archived: showArchived ? true : false, // Send true to get only archived, false to get only active
+            // If you want to show ALL (active + archived), your backend getItems needs to handle `includeArchived: true`
+            // or you can make two separate calls. For now, this toggles between active and archived.
+            // To show active by default: is_archived: showArchived (assuming showArchived is false by default)
+            // To show only active by default, the backend getItems already filters is_archived = false by default
+            // So, if showArchived is true, we want to fetch is_archived: true
+            // If showArchived is false, we want to fetch is_archived: false (which is the default)
+            // Let's adjust the backend to accept 'is_archived' parameter explicitly
+            // and if not provided, it defaults to false.
+            // So here, we only provide it if we want to see archived.
+            // Let's refine the backend to take an 'archivedStatus' filter: 'active', 'archived', or 'all'
+            // For simplicity now: if showArchived is true, we ask for archived items. Otherwise, active.
+            // --- The backend db.getItems was already modified to handle 'is_archived' filter ---
         };
+        if (showArchived) {
+            filterPayload.is_archived = true;
+        } else {
+            filterPayload.is_archived = false; // Explicitly ask for active items
+        }
+
 
         console.log("ItemManagementPage: Calling electronAPI.getItems with payload:", JSON.stringify(filterPayload, null, 2));
 
@@ -72,7 +95,9 @@ function ItemManagementPage({ currentUser }) {
         } finally {
             setIsLoading(false);
         }
-    }, [selectedCategory, selectedStorage, debouncedSearchTerm, sortBy, sortOrder]);
+    // --- MODIFICATION START: Add showArchived to dependencies ---
+    }, [selectedCategory, selectedStorage, debouncedSearchTerm, sortBy, sortOrder, showArchived]);
+    // --- MODIFICATION END ---
 
     useEffect(() => {
         loadItems();
@@ -87,36 +112,74 @@ function ItemManagementPage({ currentUser }) {
         }
     };
 
-    const navigateToEdit = (item) => navigate(`/products/${item.id}/edit`);
+    const navigateToEdit = (item) => {
+        // --- MODIFICATION START: Prevent editing of archived items (optional) ---
+        if (item.is_archived) {
+            alert("Archived items cannot be edited. Please unarchive it first if you need to make changes.");
+            return;
+        }
+        // --- MODIFICATION END ---
+        navigate(`/products/${item.id}/edit`);
+    }
     const navigateToAddNew = () => navigate('/products/new');
 
-    const handleDeleteItem = async (itemId) => {
-        if (window.confirm('Are you sure you want to delete this item? This action cannot be undone.')) {
-            setError(null);
+    // --- MODIFICATION START: Rename handleDeleteItem to handleArchiveItem ---
+    const handleArchiveItem = async (itemId, currentItemName, isCurrentlyArchived) => {
+        const actionText = isCurrentlyArchived ? 'unarchive' : 'archive';
+        const friendlyItemName = currentItemName || `item ID ${itemId}`;
+        const confirmationMessage = `Are you sure you want to ${actionText} "${friendlyItemName}"?
+    ${isCurrentlyArchived ? 'It will become active and visible in main lists again.' : 'It will be hidden from active lists but can be recovered by viewing archived items.'}`;
+
+        if (window.confirm(confirmationMessage)) {
+            setError(null); // Clear previous errors
             try {
-                const result = await window.electronAPI.deleteItem(itemId);
-                if (result.success) {
-                    console.log(result.message);
-                    loadItems();
+                let result;
+                if (isCurrentlyArchived) {
+                    // Call the new unarchive function
+                    result = await window.electronAPI.unarchiveItem(itemId);
                 } else {
-                    setError(result.message || 'Failed to delete item.');
+                    // 'deleteItem' now acts as 'archiveItem'
+                    result = await window.electronAPI.deleteItem(itemId);
+                }
+
+                if (result && result.success) {
+                    console.log(result.message);
+                    // Important: Reload items to reflect the change in status (active/archived)
+                    // This will also re-render the ItemList with updated button text/icons
+                    loadItems();
+                    // Optionally show a temporary success message to the user on this page
+                    // setSuccessMessage(result.message); // You'd need a successMessage state
+                    // setTimeout(() => setSuccessMessage(''), 3000);
+                } else if (result) {
+                    setError(result.message || `Failed to ${actionText} item.`);
+                } else {
+                    setError(`An unknown error occurred while trying to ${actionText} the item.`);
                 }
             } catch (err) {
-                console.error("Error deleting item:", err);
-                setError(`Error deleting item: ${err.message}`);
+                console.error(`Error during ${actionText} item:`, err);
+                setError(`Error ${actionText} item: ${err.message}`);
             }
         }
     };
 
-    const categories = ["Skincare", "Wellness", "Cosmetics", "Soap", "Beauty Soap", "Body Care", "Hair Care", "Uncategorized"];
-    // --- MODIFICATION START: Update storageOptions to match ProductFormPage and diagram ---
-    const storageOptions = ["STORE", "Warehouse A", "Warehouse 200"];
     // --- MODIFICATION END ---
+
+    const categories = ["Skincare", "Wellness", "Cosmetics", "Soap", "Beauty Soap", "Body Care", "Hair Care", "Uncategorized"];
+    const storageOptions = ["STORE", "Warehouse A", "Warehouse 200"];
 
     return (
         <div className="item-management-page page-container">
             <header className="page-header-alt">
-                <h1>Products List</h1>
+                <h1>{showArchived ? "Archived Products List" : "Products List"}</h1>
+                {/* --- MODIFICATION START: Toggle Button for Archived --- */}
+                <button
+                    className={`button ${showArchived ? 'button-primary' : 'button-secondary'}`}
+                    onClick={() => setShowArchived(!showArchived)}
+                    style={{fontSize: '0.9em', padding: '0.5em 1em'}}
+                >
+                    {showArchived ? 'View Active Items' : 'View Archived Items'}
+                </button>
+                {/* --- MODIFICATION END --- */}
             </header>
 
             <div className="content-block-wrapper">
@@ -144,16 +207,13 @@ function ItemManagementPage({ currentUser }) {
                                 </select>
                             </div>
                         </div>
-                        {/* Storage Location Filter Dropdown */}
                         <select
                             value={selectedStorage}
                             onChange={(e) => setSelectedStorage(e.target.value)}
                             className="filter-dropdown standalone-filter storage-filter-full-width"
                         >
                             <option value="">All Storage Locations</option>
-                            {/* --- MODIFICATION START: Map over the updated storageOptions --- */}
                             {storageOptions.map(store => <option key={store} value={store}>{store}</option>)}
-                            {/* --- MODIFICATION END --- */}
                         </select>
                     </div>
                 </div>
@@ -171,26 +231,27 @@ function ItemManagementPage({ currentUser }) {
                             <ItemList
                                 items={items}
                                 onEdit={navigateToEdit}
-                                onDelete={currentUser?.role === 'admin' ? handleDeleteItem : null}
+                                // --- MODIFICATION START: Pass handleArchiveItem and showArchived status ---
+                                onDelete={currentUser?.role === 'admin' ? handleArchiveItem : null} // Renamed prop for clarity, or keep onDelete
                                 userRole={currentUser?.role}
                                 onSort={handleSort}
                                 currentSortBy={sortBy}
                                 currentSortOrder={sortOrder}
+                                viewingArchived={showArchived} // Pass this to ItemList
+                                // --- MODIFICATION END ---
                             />
                         )}
                     </div>
                 </section>
 
                 <div className="page-actions-bar">
-                    <button className="button" onClick={navigateToAddNew}>
-                        <FaPlus style={{marginRight: '8px'}} /> Add New Stock
-                    </button>
-                    {/* You could add an export button here if desired, linking to the export functionality */}
-                    {/* Example:
-                    <button className="button button-secondary" onClick={handleExport} disabled={isExporting}>
-                        <FaFileAlt style={{marginRight: '8px'}} /> {isExporting ? 'Exporting...' : 'Export All Items'}
-                    </button>
-                    */}
+                    {/* --- MODIFICATION START: Hide "Add New Stock" when viewing archived items --- */}
+                    {!showArchived && (
+                        <button className="button" onClick={navigateToAddNew}>
+                            <FaPlus style={{marginRight: '8px'}} /> Add New Stock
+                        </button>
+                    )}
+                    {/* --- MODIFICATION END --- */}
                 </div>
             </div>
         </div>

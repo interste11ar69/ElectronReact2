@@ -256,69 +256,171 @@ app.whenReady().then(() => {
     });
 
     ipcMain.handle('update-item', async (event, itemData) => {
-      const user = getCurrentUserSomehow(); // Get the logged-in user
+      // --- CORRECTED: Use the global currentUser variable ---
+      const user = currentUser;
 
       // --- BACKEND VALIDATION ---
-      if (user.role !== 'admin') {
-        const originalItem = await db.getItemById(itemData.id);
-        if (!originalItem) return { success: false, message: 'Item not found' };
-        if (itemData.sku !== originalItem.sku) {
-            return { success: false, message: 'Authorization denied: Cannot change SKU.' };
-        }
-         if (parseFloat(itemData.cost_price) !== parseFloat(originalItem.cost_price)) {
-            return { success: false, message: 'Authorization denied: Cannot change Price.' };
-        }
+      // Ensure user is authenticated before proceeding
+      if (!user) {
+          logActivity('System', 'Update Item Error', `Attempt to update item without authenticated user. Item ID: ${itemData?.id || 'Unknown'}`);
+          return { success: false, message: 'Authentication error: No user session found.' };
       }
 
-      // --- REMOVE QUANTITY FROM UPDATE PAYLOAD ---
-      const { quantity, ...dataToUpdate } = itemData; // Destructure to exclude quantity
-
-      // Use dataToUpdate (which excludes quantity) for the database call
-      try {
-        const result = await db.updateItem(dataToUpdate); // Make sure db.updateItem internally ignores quantity if present
-
-        // Log the update action
-         if (result.success) {
-            await db.addActivityLogEntry({
-              user_identifier: user.username,
-              action: `Updated item details`,
-              details: `Item: ${result.item?.name || itemData.name} (ID: ${itemData.id})`
-            });
-            sendToRenderer('new-log-entry', /* new log entry data */); // Notify renderer
+      // Role-based validation for SKU and price changes
+      if (user.role !== 'admin') {
+        // Ensure itemData.id exists before trying to fetch the original item
+        if (itemData.id === undefined || itemData.id === null) {
+            logActivity(user.username, 'Update Item Error', `Missing ID in itemData for update.`);
+            return { success: false, message: 'Item ID is missing for update.' };
         }
+        const originalItem = await db.getItemById(itemData.id);
+        if (!originalItem) {
+            logActivity(user.username, 'Update Item Error', `Item not found for ID: ${itemData.id}`);
+            return { success: false, message: 'Item not found for update.' };
+        }
+        if (itemData.sku !== originalItem.sku) {
+            logActivity(user.username, 'Update Item Denied', `Attempt to change SKU for item ${originalItem.name} (ID: ${itemData.id})`);
+            return { success: false, message: 'Authorization denied: Employees cannot change SKU.' };
+        }
+        // Ensure cost_price from itemData and originalItem are compared as numbers
+        const currentPrice = parseFloat(itemData.cost_price);
+        const originalPrice = parseFloat(originalItem.cost_price);
+        if (isNaN(currentPrice)) { // Check if conversion to float failed
+            logActivity(user.username, 'Update Item Error', `Invalid price format for item ${originalItem.name} (ID: ${itemData.id})`);
+            return { success: false, message: 'Invalid product price format.' };
+        }
+        if (currentPrice !== originalPrice) {
+            logActivity(user.username, 'Update Item Denied', `Attempt to change Price for item ${originalItem.name} (ID: ${itemData.id})`);
+            return { success: false, message: 'Authorization denied: Employees cannot change Price.' };
+        }
+      }
+      // Price validation for admins (or when creating) is handled on the frontend,
+      // but an additional backend check for admins could be added here if desired.
 
-        return result; // { success: true/false, item: ..., message: ... }
+      // --- PREPARE DATA FOR UPDATE ---
+      const itemIdForLog = itemData?.id || 'Unknown ID';
+      const itemNameForLog = itemData?.name || `Item ID ${itemIdForLog}`;
+
+      // Destructure to exclude 'quantity' as it's not updated here.
+      // 'id' will be used in the WHERE clause of the update, not in the SET payload.
+      const { quantity, id, ...dataToUpdate } = itemData;
+
+      try {
+        if (id === undefined || id === null) {
+            logActivity(user.username, 'Update Item Error', `Missing ID in itemData for item ${itemNameForLog}`);
+            return { success: false, message: 'Item ID is missing for update.' };
+        }
+        // db.updateItem expects (id, fieldsToUpdate)
+        const result = await db.updateItem(id, dataToUpdate);
+
+        if (result.success && result.item) {
+            logActivity(
+              user.username,
+              `Updated item details`,
+              `Item: ${result.item.name || itemNameForLog} (ID: ${id})`
+            );
+        } else {
+            logActivity(
+                user.username,
+                `Failed to update item`,
+                `Item: ${itemNameForLog} (ID: ${id}). Reason: ${result.message || 'Unknown DB error'}`
+            );
+        }
+        return result;
       } catch (error) {
-        console.error('Error handling update-item:', error);
+        console.error(`[main.js] Error handling update-item for ID ${itemIdForLog}:`, error);
+        logActivity(
+            user.username,
+            `Error updating item`,
+            `Item: ${itemNameForLog} (ID: ${itemIdForLog}). Error: ${error.message}`
+        );
         return { success: false, message: error.message || 'Failed to update item on server.' };
       }
     });
 
-    ipcMain.handle('delete-item', async (event, id) => {
-        console.log('[main.js] IPC delete-item called for ID:', id);
-        let itemDetails = `ID: ${id}`;
-        try {
-            // Attempt to get details before deleting for better logging
-            const item = await db.getItemById(id);
-            if (item) {
-                 itemDetails = `Name: ${item.name}, SKU: ${item.sku || 'N/A'}, ID: ${id}`;
-            }
-        } catch (fetchError) {
-             console.warn(`[main.js] Could not fetch details before deleting item (ID: ${id}):`, fetchError.message);
-        }
+    ipcMain.handle('delete-item', async (event, itemId) => { // 'itemId' is the ID of the item to archive
+        console.log('[main.js] IPC "delete-item" (acting as ARCHIVE) called for ID:', itemId);
+        const username = currentUser?.username;
+        let itemDetailsForLog = `ID: ${itemId}`;
 
         try {
-            const result = await db.deleteItem(id);
+            const item = await db.getItemById(itemId); // Fetch item to check its current status and for logging
+            if (!item) {
+                logActivity(username, 'Archive Item Error', `Item with ID ${itemId} not found.`);
+                return { success: false, message: `Item with ID ${itemId} not found.` };
+            }
+            itemDetailsForLog = `Name: ${item.name}, SKU: ${item.sku || 'N/A'}, ID: ${itemId}`;
+
+            if (item.is_archived) {
+                logActivity(username, 'Archive Item Info', `Item ${itemDetailsForLog} is already archived.`);
+                // Optionally, you could make this toggle and call db.archiveItem(itemId, false) here.
+                // For now, it just informs. If you want "Archive" button to also unarchive if clicked again on an archived item,
+                // you'd change the logic here.
+                return { success: true, message: `Item "${item.name}" is already archived. No action taken.` };
+            }
+
+            // Optional: Add back checks for bundle components or open sales orders if you want to prevent
+            // archiving items that are actively in use, even if it's a soft delete.
+            // For now, we'll allow archiving.
+            /*
+            const { data: componentsInBundles, error: bundleCheckError } = await supabase
+                .from('bundle_components')
+                .select('bundle_id', { count: 'exact', head: true })
+                .eq('item_id', itemId);
+            if (bundleCheckError) { // ... handle error ... }
+            if (componentsInBundles && componentsInBundles.count > 0) {
+                logActivity(username, 'Archive Item Denied', `Item ${itemDetailsForLog} is part of bundles.`);
+                return { success: false, message: `Cannot archive item "${item.name}". It is used in bundles.` };
+            }
+            */
+
+            const result = await db.archiveItem(itemId, true); // Call with true to archive
+
             if (result.success) {
-                logActivity(currentUser?.username, 'Deleted inventory item', itemDetails);
+                logActivity(username, 'Archived inventory item', itemDetailsForLog);
             } else {
-                logActivity(currentUser?.username, 'Failed to delete item', `Details: ${itemDetails}, Reason: ${result.message || 'Unknown DB error'}`);
+                logActivity(username, 'Failed to archive item', `Details: ${itemDetailsForLog}, Reason: ${result.message || 'Unknown DB error'}`);
             }
             return result;
+
         } catch (error) {
-            console.error(`[main.js] Error deleting item ID ${id}:`, error);
-            logActivity(currentUser?.username, 'Error deleting item', `Details: ${itemDetails}, Error: ${error.message}`);
-            return { success: false, message: error.message || 'Unexpected error deleting item.' };
+            console.error(`[main.js delete-item/archive] Critical error for item ID ${itemId}:`, error);
+            logActivity(username, 'Error archiving item', `Details: ${itemDetailsForLog}, Error: ${error.message}`);
+            return { success: false, message: error.message || 'Unexpected error archiving item.' };
+        }
+    });
+
+    ipcMain.handle('unarchive-item', async (event, itemId) => {
+        console.log('[main.js] IPC "unarchive-item" called for ID:', itemId);
+        const username = currentUser?.username;
+        let itemDetailsForLog = `ID: ${itemId}`;
+
+        try {
+            const item = await db.getItemById(itemId); // Fetch item for logging and to check status
+            if (!item) {
+                logActivity(username, 'Unarchive Item Error', `Item with ID ${itemId} not found.`);
+                return { success: false, message: `Item with ID ${itemId} not found.` };
+            }
+            itemDetailsForLog = `Name: ${item.name}, SKU: ${item.sku || 'N/A'}, ID: ${itemId}`;
+
+            if (!item.is_archived) {
+                logActivity(username, 'Unarchive Item Info', `Item ${itemDetailsForLog} is already active (not archived).`);
+                return { success: true, message: `Item "${item.name}" is already active.` };
+            }
+
+            const result = await db.archiveItem(itemId, false); // Call with false to unarchive
+
+            if (result.success) {
+                logActivity(username, 'Restored (Unarchived) inventory item', itemDetailsForLog);
+            } else {
+                logActivity(username, 'Failed to unarchive item', `Details: ${itemDetailsForLog}, Reason: ${result.message || 'Unknown DB error'}`);
+            }
+            return result;
+
+        } catch (error) {
+            console.error(`[main.js unarchive-item] Critical error for item ID ${itemId}:`, error);
+            logActivity(username, 'Error unarchiving item', `Details: ${itemDetailsForLog}, Error: ${error.message}`);
+            return { success: false, message: error.message || 'Unexpected error unarchiving item.' };
         }
     });
 
@@ -975,52 +1077,56 @@ ipcMain.handle('get-returns', async (event, filters) => {
     ipcMain.handle('perform-stock-adjustment', async (event, adjustmentDetails) => {
         console.log(`[Main Process] perform-stock-adjustment handler invoked with details:`, adjustmentDetails);
         const username = currentUser?.username;
+        let itemNameForLog = `ID ${adjustmentDetails?.itemId || 'Unknown'}`; // Default log detail
 
         try {
-            // --- MODIFICATION START: Enhanced Validation ---
+            // --- Validation (as before) ---
             if (!adjustmentDetails || adjustmentDetails.itemId === undefined || typeof adjustmentDetails.adjustmentQuantity !== 'number') {
-                console.error('[main.js perform-stock-adjustment] Invalid adjustment details received (itemId or quantity issue):', adjustmentDetails);
-                logActivity(username, 'Stock Adjustment Error', 'Invalid details (itemId/qty) received by main process.');
+                // ... (error handling)
+                logActivity(username, 'Stock Adjustment Error', `Invalid details (itemId/qty). Provided: ${JSON.stringify(adjustmentDetails)}`);
                 return { success: false, message: 'Invalid adjustment details: Item ID and numerical quantity are required.' };
             }
-            if (!adjustmentDetails.reason || String(adjustmentDetails.reason).trim() === '') { // Check if reason is empty or just whitespace
-                console.error('[main.js perform-stock-adjustment] Reason is missing or empty from adjustmentDetails.');
-                logActivity(username, 'Stock Adjustment Error', 'Reason for adjustment was missing or empty.');
+            if (!adjustmentDetails.reason || String(adjustmentDetails.reason).trim() === '') {
+                // ... (error handling)
+                logActivity(username, 'Stock Adjustment Error', `Reason missing for item ${itemNameForLog}.`);
                 return { success: false, message: 'Reason for adjustment is required.' };
             }
-            // Check if notes are required for "Other" reason
             if (String(adjustmentDetails.reason).toLowerCase().includes('other') && (!adjustmentDetails.notes || String(adjustmentDetails.notes).trim() === '')) {
-                 console.error('[main.js perform-stock-adjustment] Notes are required when reason includes "Other".');
-                 logActivity(username, 'Stock Adjustment Error', 'Notes missing for "Other" reason.');
-                 return { success: false, message: 'Notes are required when the reason is "Other (Specify in Notes)".' };
+                // ... (error handling)
+                logActivity(username, 'Stock Adjustment Error', `Notes missing for "Other" reason for item ${itemNameForLog}.`);
+                return { success: false, message: 'Notes are required when the reason is "Other (Specify in Notes)".' };
             }
-            // --- MODIFICATION END: Enhanced Validation ---
 
+            // --- MODIFICATION START: Fetch item name for logging ---
+            try {
+                const item = await db.getItemById(adjustmentDetails.itemId);
+                if (item && item.name) {
+                    itemNameForLog = `${item.name} (ID: ${adjustmentDetails.itemId})`;
+                }
+            } catch (fetchError) {
+                console.warn(`[main.js perform-stock-adjustment] Could not fetch item details for logging for ID ${adjustmentDetails.itemId}: ${fetchError.message}`);
+                // Continue with default itemNameForLog
+            }
+            // --- MODIFICATION END ---
 
-            // --- MODIFICATION START: Use the mapping function ---
             const mappedTransactionType = mapReasonToTransactionType(adjustmentDetails.reason);
-            console.log(`[main.js perform-stock-adjustment] User Reason: '${adjustmentDetails.reason}', Mapped Transaction Type: '${mappedTransactionType}'`);
-            // --- MODIFICATION END: Use the mapping function ---
+            console.log(`[main.js perform-stock-adjustment] User Reason: '${adjustmentDetails.reason}', Mapped Transaction Type: '${mappedTransactionType}' for item ${itemNameForLog}`);
 
-
-            // Prepare context for the db.adjustStockQuantity function
             const transactionContext = {
-                transactionType: mappedTransactionType, // Use the mapped type
-                referenceId: null, // Typically null for manual adjustments
-                referenceType: 'MANUAL_STOCK_ADJUSTMENT', // A general type for these manual adjustments
+                transactionType: mappedTransactionType,
+                referenceId: null,
+                referenceType: 'MANUAL_STOCK_ADJUSTMENT',
                 userId: adjustmentDetails.userId,
                 usernameSnapshot: adjustmentDetails.username,
-                // Combine the original reason and notes for a comprehensive note in the ledger
                 notes: `User Reason: ${adjustmentDetails.reason}. Details: ${adjustmentDetails.notes || 'N/A'}`
             };
 
-            console.log(`[main.js perform-stock-adjustment] Calling db.adjustStockQuantity for item ID ${adjustmentDetails.itemId} with quantity ${adjustmentDetails.adjustmentQuantity} and context:`, transactionContext);
+            console.log(`[main.js perform-stock-adjustment] Calling db.adjustStockQuantity for item ${itemNameForLog} with quantity ${adjustmentDetails.adjustmentQuantity} and context:`, transactionContext);
 
-            // Call the database function
             const adjustmentResult = await db.adjustStockQuantity(
                 adjustmentDetails.itemId,
                 adjustmentDetails.adjustmentQuantity,
-                transactionContext // Pass the structured context
+                transactionContext
             );
             console.log('[main.js perform-stock-adjustment] db.adjustStockQuantity result:', adjustmentResult);
 
@@ -1028,7 +1134,9 @@ ipcMain.handle('get-returns', async (event, filters) => {
                 logActivity(
                     username,
                     'Performed Stock Adjustment',
-                    `Item ID: ${adjustmentDetails.itemId}, Type: ${mappedTransactionType}, Adj By: ${adjustmentDetails.adjustmentQuantity}, NewQty: ${adjustmentResult.newQuantity}, ReasonGiven: ${adjustmentDetails.reason}`
+                    // --- MODIFICATION START: Use fetched item name in log details ---
+                    `Item: ${itemNameForLog}, Type: ${mappedTransactionType}, Adj By: ${adjustmentDetails.adjustmentQuantity}, NewQty: ${adjustmentResult.newQuantity}, ReasonGiven: ${adjustmentDetails.reason}`
+                    // --- MODIFICATION END ---
                 );
                 return { success: true, message: 'Stock adjusted successfully!', newQuantity: adjustmentResult.newQuantity };
             } else {
@@ -1036,7 +1144,9 @@ ipcMain.handle('get-returns', async (event, filters) => {
                 logActivity(
                     username,
                     'Stock Adjustment Failed',
-                    `Item ID: ${adjustmentDetails.itemId}, DB Error: ${adjustmentResult.message || 'Unknown DB error'}`
+                    // --- MODIFICATION START: Use fetched item name in log details ---
+                    `Item: ${itemNameForLog}, DB Error: ${adjustmentResult.message || 'Unknown DB error'}`
+                    // --- MODIFICATION END ---
                 );
                 return { success: false, message: adjustmentResult.message || 'Failed to adjust stock.' };
             }
@@ -1046,7 +1156,9 @@ ipcMain.handle('get-returns', async (event, filters) => {
             logActivity(
                 username,
                 'Stock Adjustment Error',
-                `Item ID: ${adjustmentDetails?.itemId}, Critical Error: ${error.message}`
+                // --- MODIFICATION START: Use fetched item name in log details ---
+                `Item: ${itemNameForLog}, Critical Error: ${error.message}`
+                // --- MODIFICATION END ---
             );
             return { success: false, message: `An unexpected error occurred: ${error.message}` };
         }

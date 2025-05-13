@@ -203,6 +203,10 @@ contextBridge.exposeInMainWorld(
       getStockTransfers: (filters) => {
         console.log('[Preload] Invoking "get-stock-transfers"', filters);
         return ipcRenderer.invoke('get-stock-transfers', filters);
+      },
+      unarchiveItem: (itemId) => {
+          console.log('[Preload] Invoking "unarchive-item" for ID:', itemId);
+          return ipcRenderer.invoke('unarchive-item', itemId);
       }
     // --- MODIFICATION END ---
     // No comma after the last property in the object

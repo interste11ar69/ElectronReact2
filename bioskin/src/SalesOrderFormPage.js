@@ -167,6 +167,11 @@ function SalesOrderFormPage({ currentUser }) {
                 return;
             }
         }
+        if (!isEditing && formData.status === 'Fulfilled') { // Only for NEW orders being created as Fulfilled
+                    if (!window.confirm("You are about to create this order as 'Fulfilled'. This WILL DEDUCT STOCK immediately. Are you sure?")) {
+                        return; // User cancelled
+                    }
+                }
 
 
         setIsSubmitting(true);

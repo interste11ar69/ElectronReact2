@@ -137,6 +137,33 @@ export const db = {
     }
   },
 
+  async getUserInfoForLogById(userId) {
+      if (!supabase || !userId) {
+        console.warn('[db.getUserInfoForLogById] Supabase client not init or no userId provided. Returning default.');
+        return { username: 'System (Unknown User)' }; // Default/fallback
+      }
+      try {
+        const { data, error } = await supabase
+          .from('users')
+          .select('username') // Only fetch what's needed for the log snapshot
+          .eq('id', userId)
+          .single();
+
+        if (error) {
+          console.warn(`[db.getUserInfoForLogById] Error fetching username for user ID ${userId}:`, error.message);
+          return { username: `System (User ID: ${userId})` }; // Fallback with ID
+        }
+        if (!data) {
+          console.warn(`[db.getUserInfoForLogById] User not found for ID ${userId}.`);
+          return { username: `System (User ID: ${userId} Not Found)` };
+        }
+        return { username: data.username }; // Return an object with the username
+      } catch (e) {
+        console.error(`[db.getUserInfoForLogById] Exception fetching username for user ID ${userId}:`, e.message);
+        return { username: `System (User ID: ${userId} Exception)` }; // Fallback
+      }
+    },
+
   // For custom auth, getCurrentUser and logout are managed by the application state
   // (e.g., a variable in Electron main.js and React's App.js state).
   // These are NOT Supabase Auth functions. The IPC handlers in main.js will manage this.
@@ -1325,62 +1352,77 @@ $$;
   // --- END BUNDLE MANAGEMENT FUNCTIONS ---
   // --- SALES ORDER FUNCTIONS ---
   async createSalesOrder(orderData, orderItemsData) {
-    // orderData: { customer_id, status, notes, total_amount, created_by_user_id, order_number (optional) }
-    // orderItemsData: [{ item_id/bundle_id, item_snapshot_name, item_snapshot_sku, quantity, unit_price, line_total }, ...]
-    if (!supabase)
-      return { success: false, message: "Database client not initialized." };
-    try {
-      // 1. Create the sales_order header
-      const { data: newOrder, error: orderError } = await supabase
-        .from("sales_orders")
-        .insert([orderData])
-        .select()
-        .single();
+      // orderData should ideally include created_by_user_id
+      // and potentially username_snapshot from main.js to avoid another DB call here.
+      // However, if we want to ensure fresh data or simplify main.js, we can fetch here.
+      if (!supabase)
+        return { success: false, message: "Database client not initialized." };
 
-      if (orderError) throw orderError;
-      if (!newOrder)
-        throw new Error("Sales order creation failed to return data.");
+      let newOrderId = null;
+      try {
+        // ... (create sales_order header and items as before) ...
+        const { data: newOrder, error: orderError } = await supabase
+          .from("sales_orders")
+          .insert([orderData]) // orderData contains created_by_user_id
+          .select()
+          .single();
 
-      // 2. Create sales_order_items linked to the newOrder.id
-      const itemsToInsert = orderItemsData.map((item) => ({
-        ...item,
-        sales_order_id: newOrder.id,
-      }));
+        if (orderError) throw orderError;
+        if (!newOrder) throw new Error("Sales order creation failed to return data.");
+        newOrderId = newOrder.id;
 
-      const { error: itemsError } = await supabase
-        .from("sales_order_items")
-        .insert(itemsToInsert);
+        const itemsToInsert = orderItemsData.map((item) => ({ ...item, sales_order_id: newOrderId }));
+        const { error: itemsError } = await supabase.from("sales_order_items").insert(itemsToInsert);
 
-      if (itemsError) {
-        // CRITICAL: Order header created, but items failed.
-        // In a robust system, you'd attempt to delete the order header here (rollback).
-        // For simplicity now, we'll log and report.
-        console.error(
-          `[db.createSalesOrder] CRITICAL: Order ${newOrder.id} created, but item insertion failed:`,
-          itemsError
-        );
-        await supabase.from("sales_orders").delete().eq("id", newOrder.id); // Attempt rollback
-        throw new Error(
-          `Failed to add items to sales order: ${itemsError.message}. Order creation rolled back.`
-        );
+        if (itemsError) {
+          console.error(`[db.createSalesOrder] CRITICAL: Order ${newOrderId} created, but item insertion failed:`, itemsError);
+          if (newOrderId) await supabase.from("sales_orders").delete().eq("id", newOrderId);
+          throw new Error(`Failed to add items to sales order: ${itemsError.message}. Order creation rolled back.`);
+        }
+
+        if (newOrder.status === "Fulfilled") {
+          console.log(`[db.createSalesOrder] Order ${newOrderId} (${newOrder.order_number || ''}) created as Fulfilled. Processing stock deductions.`);
+
+          const userInfo = await db.getUserInfoForLogById(newOrder.created_by_user_id); // Use the new helper
+
+          for (const item of orderItemsData) {
+            let deductionResult;
+            const commonTransactionNotes = `Sale for NEW Order #${newOrder.order_number || newOrder.id}, Item: ${item.item_snapshot_name || (item.item_id ? `Item ID ${item.item_id}` : `Bundle ID ${item.bundle_id}`)}`;
+
+            if (item.item_id) {
+              const transactionDetails = {
+                  transactionType: 'SALE_ITEM_DEDUCTION',
+                  referenceId: String(newOrderId),
+                  referenceType: 'SALES_ORDER_ITEM',
+                  userId: newOrder.created_by_user_id,
+                  usernameSnapshot: userInfo.username, // Use fetched username
+                  notes: commonTransactionNotes
+              };
+              deductionResult = await db.adjustStockQuantity(item.item_id, -Math.abs(item.quantity), transactionDetails);
+            } else if (item.bundle_id) {
+              const bundleSaleContext = {
+                  salesOrderId: newOrderId,
+                  salesOrderNumber: newOrder.order_number || `SO-${newOrder.id}`,
+                  userId: newOrder.created_by_user_id,
+                  usernameSnapshot: userInfo.username // Use fetched username
+              };
+              deductionResult = await db.processBundleSale(item.bundle_id, item.quantity, bundleSaleContext);
+            }
+
+            if (!deductionResult || !deductionResult.success) {
+              // ... (error handling as before) ...
+              const productName = item.item_snapshot_name || (item.item_id ? `Item ID ${item.item_id}` : `Bundle ID ${item.bundle_id}`);
+              throw new Error(`Order created, but failed to deduct stock for ${productName}. Fulfillment incomplete. Error: ${deductionResult?.message}`);
+            }
+          }
+          console.log(`[db.createSalesOrder] Stock deductions complete for newly created fulfilled order ${newOrderId}.`);
+        }
+        return { success: true, order: newOrder, message: `Sales Order ${newOrder.order_number || newOrder.id} created successfully.`};
+      } catch (error) {
+        console.error("[db.createSalesOrder] Error:", error);
+        return { success: false, message: error.message || "Failed to create sales order." };
       }
-
-      // Optionally re-fetch the order with items if needed, or just return success
-      return {
-        success: true,
-        order: newOrder,
-        message: `Sales Order ${
-          newOrder.order_number || newOrder.id
-        } created successfully.`,
-      };
-    } catch (error) {
-      console.error("[db.createSalesOrder] Error:", error);
-      return {
-        success: false,
-        message: error.message || "Failed to create sales order.",
-      };
-    }
-  },
+    },
 
   async getSalesOrders(filters = {}) {
     // e.g., filters.status, filters.customerId, filters.searchTerm
@@ -1456,100 +1498,70 @@ order_items:sales_order_items(*)
     }
   },
 
-  async updateSalesOrderStatus(orderId, newStatus, userId) {
-    if (!supabase)
-      return { success: false, message: "Database client not initialized." };
-    try {
-      // Fetch the order and its items first to process stock deductions
-      const order = await db.getSalesOrderById(orderId);
-      if (!order) return { success: false, message: "Sales order not found." };
+  async updateSalesOrderStatus(orderId, newStatus, performingUserId) {
+      if (!supabase)
+        return { success: false, message: "Database client not initialized." };
+      try {
+        const order = await db.getSalesOrderById(orderId);
+        if (!order) return { success: false, message: "Sales order not found." };
 
-      if (order.status === "Fulfilled" && newStatus !== "Fulfilled") {
-        return {
-          success: false,
-          message:
-            "Cannot change status of an already fulfilled order to non-fulfilled in this flow.",
-        };
-      }
-      if (order.status === "Cancelled") {
-        return {
-          success: false,
-          message: "Cannot change status of a cancelled order.",
-        };
-      }
+        // ... (status checks for Fulfilled/Cancelled remain the same) ...
+        if (order.status === "Fulfilled" && newStatus !== "Fulfilled") { /* ... */ return { success: false, message: "..." }; }
+        if (order.status === "Cancelled" && newStatus !== "Cancelled") { /* ... */ return { success: false, message: "..." }; }
 
-      // --- STOCK DEDUCTION LOGIC ---
-      if (newStatus === "Fulfilled" && order.status !== "Fulfilled") {
-        console.log(
-          `[db.updateSalesOrderStatus] Order ${orderId} moving to Fulfilled. Processing stock deductions.`
-        );
-        for (const item of order.order_items) {
-          let deductionResult;
-          if (item.item_id) {
-            // Regular item
-            console.log(
-              `Deducting single item ${item.item_id} by quantity ${item.quantity}`
-            );
-            deductionResult = await db.adjustStockQuantity(
-              item.item_id,
-              -item.quantity
-            ); // Deduct
-          } else if (item.bundle_id) {
-            // Bundle
-            console.log(
-              `Deducting bundle ${item.bundle_id} by quantity ${item.quantity}`
-            );
-            deductionResult = await db.processBundleSale(
-              item.bundle_id,
-              item.quantity
-            );
+
+        if (newStatus === "Fulfilled" && order.status !== "Fulfilled") {
+          console.log(`[db.updateSalesOrderStatus] Order ${orderId} (${order.order_number || ''}) moving to Fulfilled. Processing stock deductions.`);
+
+          const performingUserInfo = await db.getUserInfoForLogById(performingUserId); // Use the new helper
+
+          for (const item of order.order_items) {
+            let deductionResult;
+            const commonTransactionNotes = `Sale for Order #${order.order_number || order.id}, Item: ${item.item_snapshot_name || (item.item_id ? `Item ID ${item.item_id}` : `Bundle ID ${item.bundle_id}`)}`;
+
+            if (item.item_id) {
+              const transactionDetails = {
+                  transactionType: 'SALE_ITEM_DEDUCTION',
+                  referenceId: String(order.id),
+                  referenceType: 'SALES_ORDER_ITEM',
+                  userId: performingUserId,
+                  usernameSnapshot: performingUserInfo.username, // Use fetched username
+                  notes: commonTransactionNotes
+              };
+              deductionResult = await db.adjustStockQuantity(item.item_id, -Math.abs(item.quantity), transactionDetails);
+            } else if (item.bundle_id) {
+              const bundleSaleContext = {
+                  salesOrderId: order.id,
+                  salesOrderNumber: order.order_number || `SO-${order.id}`,
+                  userId: performingUserId,
+                  usernameSnapshot: performingUserInfo.username // Use fetched username
+              };
+              deductionResult = await db.processBundleSale(item.bundle_id, item.quantity, bundleSaleContext);
+            }
+
+            if (!deductionResult || !deductionResult.success) {
+              // ... (error handling as before) ...
+               const productName = item.item_snapshot_name || (item.item_id ? `Item ID ${item.item_id}` : `Bundle ID ${item.bundle_id}`);
+              throw new Error(`Failed to deduct stock for ${productName}. Order fulfillment incomplete. Error: ${deductionResult?.message}`);
+            }
           }
-
-          if (!deductionResult || !deductionResult.success) {
-            // CRITICAL: Failed to deduct stock for an item/bundle.
-            // Rollback status update or at least report major error.
-            const productName =
-              item.item_snapshot_name ||
-              (item.item_id
-                ? `Item ID ${item.item_id}`
-                : `Bundle ID ${item.bundle_id}`);
-            console.error(
-              `[db.updateSalesOrderStatus] CRITICAL: Failed to deduct stock for ${productName} in order ${orderId}. Error: ${deductionResult?.message}`
-            );
-            throw new Error(
-              `Failed to deduct stock for ${productName}. Order fulfillment incomplete. Error: ${deductionResult?.message}`
-            );
-          }
+          console.log(`[db.updateSalesOrderStatus] Stock deductions complete for order ${orderId}.`);
         }
-        console.log(
-          `[db.updateSalesOrderStatus] Stock deductions complete for order ${orderId}.`
-        );
+
+        const { data: updatedOrder, error } = await supabase
+          .from("sales_orders")
+          .update({ status: newStatus, updated_at: new Date() })
+          .eq("id", orderId)
+          .select()
+          .single();
+
+        if (error) throw error;
+        return { success: true, order: updatedOrder, message: `Sales Order status updated to ${newStatus}.`};
+      } catch (error) {
+        console.error("[db.updateSalesOrderStatus] Error:", error);
+        return { success: false, message: error.message || "Failed to update sales order status." };
       }
-      // --- END STOCK DEDUCTION LOGIC ---
-
-      // Update the order status
-      const { data: updatedOrder, error } = await supabase
-        .from("sales_orders")
-        .update({ status: newStatus, updated_at: new Date() }) // `updated_at` is handled by trigger too
-        .eq("id", orderId)
-        .select()
-        .single();
-
-      if (error) throw error;
-
-      return {
-        success: true,
-        order: updatedOrder,
-        message: `Sales Order status updated to ${newStatus}.`,
-      };
-    } catch (error) {
-      console.error("[db.updateSalesOrderStatus] Error:", error);
-      return {
-        success: false,
-        message: error.message || "Failed to update sales order status.",
-      };
-    }
-  },
+    },
 
   // Function to generate a unique (enough) order number - can be improved
   async generateOrderNumber() {

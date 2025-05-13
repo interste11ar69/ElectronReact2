@@ -1294,20 +1294,20 @@ ipcMain.handle('generate-order-number', async () => {
 });
 
 ipcMain.handle('create-sales-order', async (event, { orderData, orderItemsData }) => {
-    const user = currentUser; // Assuming currentUser is available
+    const user = currentUser;
     if (!user) return { success: false, message: "Unauthorized" };
     try {
-        // Add created_by_user_id to orderData
-        const fullOrderData = { ...orderData, created_by_user_id: user.id };
+        // `created_by_user_id` is still important.
+        // `username_snapshot` specifically for initial logging inside createSalesOrder is now handled by db.getUserInfoForLogById
+        const fullOrderData = {
+            ...orderData,
+            created_by_user_id: user.id
+            // No need to add username_snapshot: user.username here if db.createSalesOrder fetches it
+        };
         const result = await db.createSalesOrder(fullOrderData, orderItemsData);
         if (result.success) {
-            await db.addActivityLogEntry({
-                user_identifier: user.username,
-                action: 'Created Sales Order',
-                details: `Order ID: ${result.order.id} (No: ${result.order.order_number || ''}), Total: ${result.order.total_amount}`
-            });
-            // If the order is created directly as 'Fulfilled', stock deduction happens in createSalesOrder/updateSalesOrderStatus
-            // This example assumes 'createSalesOrder' doesn't auto-fulfill. Status change to 'Fulfilled' triggers deduction.
+            // The main activity log entry still benefits from direct username access
+            logActivity(user.username, 'Created Sales Order', `Order ID: ${result.order.id} (No: ${result.order.order_number || ''}), Total: ${result.order.total_amount}`);
         }
         return result;
     } catch (error) {
@@ -1332,18 +1332,31 @@ ipcMain.handle('update-sales-order-status', async (event, { orderId, newStatus }
     const user = currentUser;
     if (!user) return { success: false, message: "Unauthorized" };
     try {
-        const result = await db.updateSalesOrderStatus(orderId, newStatus, user.id); // Pass user.id for logging if needed
+        const result = await db.updateSalesOrderStatus(orderId, newStatus, user.id); // user.id is passed as performingUserId
+
         if (result.success) {
-            await db.addActivityLogEntry({
-                user_identifier: user.username,
-                action: `Updated Sales Order Status to ${newStatus}`,
-                details: `Order ID: ${orderId}. Stock deductions may have occurred if status is 'Fulfilled'.`
-            });
-            // Send 'new-log-entry' if needed
+            // --- MODIFICATION FOR ACTIVITY LOG ---
+            let logDetails = `Order ID: ${orderId}.`;
+            if (newStatus === 'Fulfilled' && result.order && result.order.status === 'Fulfilled') {
+                // We can be more confident deductions occurred if the final status is indeed Fulfilled
+                logDetails += ` Stock deductions processed.`;
+            } else if (newStatus === 'Fulfilled') {
+                // This case might happen if the update to Fulfilled failed for some reason after stock deduction attempt.
+                // The db function itself throws an error if deduction fails, so result.success would be false.
+                // So, if result.success is true and newStatus is Fulfilled, deductions are implied.
+                logDetails += ` Stock deductions were processed.`;
+            }
+            // --- END MODIFICATION ---
+            logActivity(user.username, `Updated Sales Order Status to ${newStatus}`, logDetails);
+        } else {
+            // Log the failure more explicitly if needed, though db.updateSalesOrderStatus itself might log errors
+            logActivity(user.username, `Failed to Update Sales Order Status to ${newStatus}`, `Order ID: ${orderId}. Error: ${result.message}`);
         }
         return result;
     } catch (error) {
         console.error("Error in update-sales-order-status IPC:", error);
+        // Ensure error details are logged if an exception occurs before logActivity inside try
+        logActivity(user.username, 'Error updating Sales Order Status', `Order ID: ${orderId}. System Error: ${error.message}`);
         return { success: false, message: error.message };
     }
 });

@@ -1,22 +1,27 @@
 // src/Sidebar.js
 import React from 'react';
-import { NavLink, useNavigate, useLocation } from 'react-router-dom';
+import { NavLink, useNavigate } from 'react-router-dom'; // useLocation is not strictly needed if NavLink handles active state
 import './Sidebar.css';
 import {
-    FaTachometerAlt, FaBoxOpen, FaAddressBook, // Existing main icons
-    FaChartBar,                                 // For Analytics
-    FaDatabase,                                 // New icon for Data Management
-    FaSignOutAlt,                                // For Logout
+    FaTachometerAlt, FaBoxOpen, FaAddressBook,
+    FaChartBar,
+    FaDatabase,
+    FaSignOutAlt,
     FaUndo,
-     FaHistory
-    // Removed FaPenSquare, FaFileUpload from direct imports as they are not direct sidebar links anymore
-    // You can keep FaTags, FaShoppingCart, FaTruckMoving, FaUsers, FaUserCircle if you plan to use them soon
+    FaHistory,
+    FaSlidersH,
+    FaBoxes,
+    FaFileInvoiceDollar, // For Sales Orders list
+    FaCartPlus,
+    FaListAlt,
+    FaExchangeAlt
+    // Optional: For direct "New Sales Order" link
 } from 'react-icons/fa';
-import appLogo from './assets/logo.png'; // Make sure this path is correct or your import setup works
+import appLogo from './assets/logo.png';
 
 function Sidebar({ onLogout, currentUser }) {
   const navigate = useNavigate();
-  const location = useLocation(); // To highlight active link
+  // const location = useLocation(); // NavLink's isActive prop can handle active state
 
   const handleLogoutClick = async () => {
     try {
@@ -33,6 +38,8 @@ function Sidebar({ onLogout, currentUser }) {
           { path: '/', label: 'Dashboard', icon: <FaTachometerAlt /> },
           { path: '/products', label: 'Inventory', icon: <FaBoxOpen /> },
           { path: '/customers', label: 'Customers', icon: <FaAddressBook /> },
+          { path: '/sales-orders', label: 'Sales Orders', icon: <FaFileInvoiceDollar /> },
+        //   { path: '/sales-orders/new', label: 'New Sales Order', icon: <FaCartPlus /> }, // Optional direct link
           { path: '/returns/process', label: 'Process Return', icon: <FaUndo /> },
           { path: '/returns', label: 'Return History', icon: <FaHistory /> },
       ];
@@ -40,29 +47,41 @@ function Sidebar({ onLogout, currentUser }) {
       const adminToolsLinks = [
           { path: '/analytics', label: 'Analytics', icon: <FaChartBar />, adminOnly: true },
           { path: '/data-management', label: 'Data Management', icon: <FaDatabase />, adminOnly: true },
+          { path: '/stock-adjustment', label: 'Stock Adjustments', icon: <FaSlidersH />, adminOnly: true },
+          { path: '/bundles', label: 'Bundles/Kits', icon: <FaBoxes />, adminOnly: true },
+          { path: '/inventory-movements', label: 'Stock Ledger', icon: <FaListAlt />, adminOnly: true },
+          { path: '/stock-transfer', label: 'Stock Transfer', icon: <FaExchangeAlt />, adminOnly: true },
       ];
 
       // --- Helper function to render a list of links ---
       const renderLinkList = (linksArray) => {
           return linksArray.map(link => {
-              // Skip rendering check remains the same
               if (link.adminOnly && currentUser?.role !== 'admin') {
                   return null;
               }
 
-              // *** 2. REMOVE the manual isActive calculation ***
-              // const isActive = location.pathname === link.path ||
-              //                  (link.path !== '/' && location.pathname.startsWith(link.path));
+              // Define paths that should have exact matching for active state
+              const exactMatchPaths = [
+                  '/',
+                  '/products',
+                  '/customers',
+                  '/sales-orders', // Add sales order list page
+                  '/returns',      // Add returns list page
+                  '/analytics',
+                  '/data-management',
+                  '/stock-adjustment',
+                  '/bundles'
+              ];
+              // Note: '/returns/process' and '/sales-orders/new' (if added) usually don't need 'end'
+              // if you want their parent list link to remain somewhat active.
+              // NavLink default behavior handles this fairly well. Test to confirm.
 
               return (
-                   // *** 3. Use NavLink and its className prop ***
-                  <li key={link.path}> {/* Keep key on the li */}
+                  <li key={link.path}>
                       <NavLink
                           to={link.path}
-                          // *** 4. Add the 'end' prop to parent/exact match routes ***
-                          // Ensures the link is active only on exact match for these paths
-                          end={['/', '/products', '/customers', '/returns', '/analytics', '/data-management'].includes(link.path)}
-                          className={({ isActive }) => isActive ? 'active' : ''} // Use NavLink's built-in state
+                          end={exactMatchPaths.includes(link.path)} // Use 'end' for exact match on specified paths
+                          className={({ isActive }) => isActive ? 'active' : ''} // NavLink handles active class
                       >
                           {link.icon}
                           <span>{link.label}</span>
@@ -72,7 +91,6 @@ function Sidebar({ onLogout, currentUser }) {
           });
       };
 
-      // The rest of the component remains the same...
       return (
           <div className="sidebar">
               <div className="sidebar-header">
@@ -109,4 +127,4 @@ function Sidebar({ onLogout, currentUser }) {
       );
   }
 
-  export default Sidebar;
+export default Sidebar;

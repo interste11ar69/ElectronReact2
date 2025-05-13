@@ -1,0 +1,120 @@
+/* src/BundleListPage.css */
+.bundle-list-page .page-header-alt {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.5rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid var(--color-border-soft);
+}
+
+.bundle-list-page .page-header-alt h1 {
+    margin: 0;
+}
+
+#bundleTable {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+#bundleTable th,
+#bundleTable td {
+    border: 1px solid var(--color-border-soft);
+    padding: 0.75rem;
+    text-align: left;
+    vertical-align: top; /* For component list */
+}
+
+#bundleTable thead th {
+    background-color: var(--color-table-header-bg);
+    font-weight: 600;
+}
+
+#bundleTable tbody tr:hover {
+    background-color: var(--color-table-row-hover);
+}
+
+.component-list-inline {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    font-size: 0.9em;
+}
+.component-list-inline li {
+    margin-bottom: 0.25rem;
+}
+.component-list-inline li:last-child {
+    margin-bottom: 0;
+}
+
+.record-sale-btn {
+    /* Basic styling, can be like button-edit or button-primary */
+    padding: calc(var(--spacing-unit) * 0.75) calc(var(--spacing-unit) * 1.5);
+    font-size: calc(var(--font-size-base) * 0.875);
+    margin-left: var(--spacing-unit); /* Add some space from other buttons */
+    border-radius: var(--border-radius);
+    background-color: var(--color-status-success); /* Green for "sell" action */
+    border: 1px solid var(--color-status-success);
+    color: white;
+    cursor: pointer;
+    transition: opacity 0.15s ease-in-out;
+}
+.record-sale-btn:hover {
+    opacity: 0.85;
+}
+.record-sale-btn:disabled {
+    background-color: var(--color-text-light) !important;
+    border-color: var(--color-text-light) !important;
+    opacity: 0.65;
+    cursor: not-allowed;
+}
+
+
+/* Modal Styles (can be global or specific) */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.6);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1050; /* Ensure it's above other content */
+}
+
+.modal-content.record-sale-modal { /* Specific class for this modal */
+  background-color: var(--color-surface);
+  padding: calc(var(--spacing-unit) * 4) calc(var(--spacing-unit) * 5);
+  border-radius: var(--border-radius-rounded);
+  box-shadow: var(--box-shadow);
+  width: 90%;
+  max-width: 450px;
+  text-align: left;
+}
+
+.record-sale-modal h3 {
+    margin-top: 0;
+    margin-bottom: 1.5rem;
+    font-size: 1.4em;
+    border-bottom: 1px solid var(--color-border-soft);
+    padding-bottom: 0.75rem;
+}
+.record-sale-modal .form-group {
+    margin-bottom: 1rem;
+}
+.record-sale-modal .form-group label {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-weight: 500;
+}
+.record-sale-modal input[type="number"] {
+    /* Use global input styles or define here */
+    padding: calc(var(--spacing-unit) * 1.5);
+    border: 1px solid var(--color-border-strong);
+    border-radius: var(--border-radius);
+    width: 100px; /* Adjust as needed */
+}
+
+/* Reuse .button-edit, .button-delete, .table-actions from index.css */

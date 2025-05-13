@@ -1,0 +1,63 @@
+/* src/BundleFormPage.css */
+/* Reuse .page-container, .page-header-alt, .form-header-left, .back-button,
+   .error-message, .success-message, .card, .form-row, .form-group, .form-group-inline,
+   input, select, textarea, .section-divider, .form-footer, .form-actions, .save-button
+   from your existing ProductFormPage.css or index.css by ensuring .bundle-form has those classes */
+
+.bundle-form .checkbox-group { /* Specific for checkbox alignment */
+    display: flex;
+    align-items: center;
+    padding-top: 1.5rem; /* Adjust as needed to align with label of adjacent input */
+}
+.bundle-form .checkbox-group input[type="checkbox"] {
+    width: auto;
+    margin-left: 0.5rem;
+    height: 20px;
+    width: 20px;
+}
+.bundle-form .checkbox-group label {
+    margin-bottom: 0; /* Remove default label margin */
+}
+
+
+.component-row {
+    align-items: flex-end; /* Align button with bottom of inputs */
+    gap: 1rem;
+    padding: 1rem;
+    border: 1px dashed var(--color-border-soft);
+    margin-bottom: 1rem;
+    border-radius: var(--border-radius);
+}
+
+.component-item-select {
+    flex-grow: 3; /* Item select takes more space */
+}
+.component-quantity {
+    flex-grow: 1;
+    min-width: 100px; /* Ensure quantity input is not too small */
+}
+.component-quantity input {
+    text-align: right;
+}
+
+.component-actions {
+    flex-shrink: 0;
+    padding-bottom: calc(var(--spacing-unit) * 1.75); /* To align with input padding */
+}
+
+.button-delete-component {
+    background: none;
+    border: none;
+    color: var(--color-status-danger);
+    font-size: 1.2em;
+    cursor: pointer;
+    padding: 0.5rem;
+}
+.button-delete-component:hover {
+    color: darkred;
+}
+
+.add-component-btn {
+    margin-top: 1rem;
+    margin-bottom: 1.5rem;
+}

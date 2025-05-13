@@ -1,0 +1,84 @@
+/* src/StockAdjustmentPage.css */
+
+/* Inherit general page structure from index.css or Layout.css */
+.stock-adjustment-page .page-header-alt h1 {
+    /* Styles for the page title if needed */
+     margin-bottom: 5px; /* Less space before subtitle */
+}
+.stock-adjustment-page .page-header-alt .form-subtitle {
+     /* Styles for the subtitle */
+     margin-top: 0;
+     font-size: 0.95em;
+     color: var(--color-text-medium);
+}
+
+.stock-adjustment-form {
+    /* Card styling potentially inherited from .card in index.css */
+    padding: calc(var(--spacing-unit) * 4);
+}
+
+.stock-adjustment-form .form-group {
+    margin-bottom: calc(var(--spacing-unit) * 4);
+}
+
+/* Style for showing current stock below item select */
+.current-stock-info {
+    font-size: 0.85em;
+    color: var(--color-text-medium);
+    margin-top: calc(var(--spacing-unit) * 1.5);
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-unit);
+}
+.current-stock-info svg {
+    color: var(--color-accent-secondary); /* Example color */
+}
+
+
+/* Style for calculated quantity display */
+.calculated-quantity {
+    background-color: var(--color-background-main); /* Light background */
+    padding: calc(var(--spacing-unit) * 2) calc(var(--spacing-unit) * 3);
+    border-radius: var(--border-radius);
+    border: 1px solid var(--color-border-soft);
+    display: flex;
+    align-items: center;
+    gap: calc(var(--spacing-unit) * 2);
+}
+.calculated-quantity label {
+    margin-bottom: 0;
+    font-weight: 600;
+    color: var(--color-text-medium);
+}
+.calculated-quantity .quantity-value {
+    font-size: 1.2em;
+    font-weight: 700;
+    color: var(--color-text-dark);
+}
+.calculated-quantity .quantity-value.negative {
+    color: var(--color-status-danger);
+}
+
+
+/* Use general input styles from index.css or define specific ones */
+.stock-adjustment-form .form-control {
+   /* Inherits from index.css hopefully */
+   /* Example override/addition if needed: */
+   /* border-color: var(--color-accent-gold); */
+}
+
+.stock-adjustment-form .form-actions {
+    margin-top: calc(var(--spacing-unit) * 5);
+    text-align: right;
+}
+
+/* Success message styling */
+.success-message {
+    background-color: rgba(56, 142, 60, 0.1); /* Light green bg */
+    color: var(--color-status-success);
+    border: 1px solid var(--color-status-success);
+    padding: calc(var(--spacing-unit) * 2.5);
+    margin-bottom: calc(var(--spacing-unit) * 3);
+    border-radius: var(--border-radius);
+    font-size: 0.9em;
+}

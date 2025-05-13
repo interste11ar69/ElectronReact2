@@ -199,7 +199,6 @@ function AnalyticsPage() {
     <div className="container page-container">
       <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--color-border)', paddingBottom: '1rem' }}>
         <h1>Inventory Analytics</h1>
-        <Link to="/" className="button button-secondary">Back to Dashboard</Link>
       </header>
 
       <main style={{ marginTop: '2rem' }}>

@@ -101,7 +101,6 @@ function ItemManagementPage({ currentUser }) {
 
     const navigateToEdit = (item) => navigate(`/products/${item.id}/edit`);
     const navigateToAddNew = () => navigate('/products/new');
-    const handleGenerateReport = () => alert("Report generation feature coming soon!");
 
     const handleDeleteItem = async (itemId) => {
         if (window.confirm('Are you sure you want to delete this item? This action cannot be undone.')) {
@@ -199,9 +198,6 @@ function ItemManagementPage({ currentUser }) {
                 <div className="page-actions-bar">
                     <button className="button" onClick={navigateToAddNew}>
                         <FaPlus style={{marginRight: '8px'}} /> Add New Stock
-                    </button>
-                    <button className="button" onClick={handleGenerateReport}>
-                        <FaFileAlt style={{marginRight: '8px'}} /> Generate Report
                     </button>
                 </div>
             </div>

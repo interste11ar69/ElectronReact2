@@ -9,6 +9,20 @@ const isDev = require('electron-is-dev');
 const { db } = require('../src/supabaseClient'); // Correct import
 const XLSX = require('xlsx');
 const Papa = require('papaparse');
+const TRANSACTION_TYPES = {
+    CYCLE_COUNT: 'ADJUSTMENT_CYCLE_COUNT',
+    DAMAGED: 'ADJUSTMENT_DAMAGED',
+    EXPIRED: 'ADJUSTMENT_EXPIRED',
+    MARKETING: 'ADJUSTMENT_MARKETING',
+    GIFT: 'ADJUSTMENT_GIFT',
+    INTERNAL_USE: 'ADJUSTMENT_INTERNAL_USE',
+    TRANSFER_ERROR: 'ADJUSTMENT_TRANSFER_ERROR',
+    FOUND_STOCK: 'ADJUSTMENT_FOUND_STOCK',
+    OTHER: 'MANUAL_ADJUSTMENT_OTHER',
+    UNKNOWN: 'MANUAL_ADJUSTMENT_UNKNOWN'
+    // Add other transaction types used elsewhere (e.g., SALE_ITEM, RETURN_RESELLABLE) if this function might be used more broadly,
+    // or keep it specific to stock adjustments.
+};
 
 // --- Global Variables ---
 let currentUser = null;
@@ -65,6 +79,7 @@ async function logActivity(user, action, details = '') { // Made async
     }
 }
 
+
 // --- CSV Helper Function (Defined Globally) ---
 function convertToCSV(data, headers) {
     if (!data || data.length === 0) {
@@ -82,6 +97,26 @@ function convertToCSV(data, headers) {
         }).join(',');
     });
     return [headerString, ...rows].join('\n');
+}
+function mapReasonToTransactionType(reasonString) {
+    if (!reasonString) return TRANSACTION_TYPES.UNKNOWN; // Fallback if reason is somehow empty
+
+    const reasonLower = String(reasonString).toLowerCase().trim(); // Ensure it's a string before toLowerCase
+
+    if (reasonLower.includes('cycle count')) return TRANSACTION_TYPES.CYCLE_COUNT;
+    if (reasonLower.includes('damaged')) return TRANSACTION_TYPES.DAMAGED;
+    if (reasonLower.includes('expired')) return TRANSACTION_TYPES.EXPIRED;
+    if (reasonLower.includes('sample') || reasonLower.includes('marketing')) return TRANSACTION_TYPES.MARKETING;
+    if (reasonLower.includes('gift') || reasonLower.includes('giveaway')) return TRANSACTION_TYPES.GIFT;
+    if (reasonLower.includes('internal use')) return TRANSACTION_TYPES.INTERNAL_USE; // This will catch "Internal Use"
+    if (reasonLower.includes('transfer error')) return TRANSACTION_TYPES.TRANSFER_ERROR;
+    if (reasonLower.includes('found')) return TRANSACTION_TYPES.FOUND_STOCK;
+    if (reasonLower.includes('other')) return TRANSACTION_TYPES.OTHER;
+
+    // If no specific keyword match, log a warning and use a generic fallback.
+    // This helps identify if new reasons are added to the frontend without updating the mapping.
+    console.warn(`[mapReasonToTransactionType] Unmapped reason: '${reasonString}'. Defaulting to ${TRANSACTION_TYPES.UNKNOWN}. Consider adding a specific mapping.`);
+    return TRANSACTION_TYPES.UNKNOWN;
 }
 
 // --- Create Window Function ---
@@ -216,26 +251,43 @@ app.whenReady().then(() => {
         }
     });
 
-    ipcMain.handle('update-item', async (event, itemDataWithId) => {
-        console.log('[main.js] IPC update-item called with data:', itemDataWithId);
-        try {
-            if (!itemDataWithId || itemDataWithId.id === undefined || itemDataWithId.id === null) {
-                throw new Error("Item ID is required and must be valid for update.");
-            }
-            const id = itemDataWithId.id;
-            const { id: removedId, ...dataToUpdate } = itemDataWithId;
-            const result = await db.updateItem(id, dataToUpdate);
-            if (result.success && result.item) {
-                logActivity(currentUser?.username, 'Updated inventory item', `Name: ${result.item.name}, SKU: ${result.item.sku || 'N/A'}, ID: ${id}`);
-            } else {
-                 logActivity(currentUser?.username, 'Failed to update item', `ID: ${id}, Reason: ${result.message || 'Unknown DB error'}`);
-            }
-            return result;
-        } catch (error) {
-            console.error(`[main.js] Error updating item ID ${itemDataWithId?.id}:`, error);
-             logActivity(currentUser?.username, 'Error updating item', `ID: ${itemDataWithId?.id}, Error: ${error.message}`);
-            return { success: false, message: error.message || 'Unexpected error updating item.' };
+    ipcMain.handle('update-item', async (event, itemData) => {
+      const user = getCurrentUserSomehow(); // Get the logged-in user
+
+      // --- BACKEND VALIDATION ---
+      if (user.role !== 'admin') {
+        const originalItem = await db.getItemById(itemData.id);
+        if (!originalItem) return { success: false, message: 'Item not found' };
+        if (itemData.sku !== originalItem.sku) {
+            return { success: false, message: 'Authorization denied: Cannot change SKU.' };
         }
+         if (parseFloat(itemData.cost_price) !== parseFloat(originalItem.cost_price)) {
+            return { success: false, message: 'Authorization denied: Cannot change Price.' };
+        }
+      }
+
+      // --- REMOVE QUANTITY FROM UPDATE PAYLOAD ---
+      const { quantity, ...dataToUpdate } = itemData; // Destructure to exclude quantity
+
+      // Use dataToUpdate (which excludes quantity) for the database call
+      try {
+        const result = await db.updateItem(dataToUpdate); // Make sure db.updateItem internally ignores quantity if present
+
+        // Log the update action
+         if (result.success) {
+            await db.addActivityLogEntry({
+              user_identifier: user.username,
+              action: `Updated item details`,
+              details: `Item: ${result.item?.name || itemData.name} (ID: ${itemData.id})`
+            });
+            sendToRenderer('new-log-entry', /* new log entry data */); // Notify renderer
+        }
+
+        return result; // { success: true/false, item: ..., message: ... }
+      } catch (error) {
+        console.error('Error handling update-item:', error);
+        return { success: false, message: error.message || 'Failed to update item on server.' };
+      }
     });
 
     ipcMain.handle('delete-item', async (event, id) => {
@@ -824,82 +876,83 @@ app.on('window-all-closed', function () {
     }
 
 });
-ipcMain.handle('process-return', async (event, returnDetails) => {
-    console.log('[main.js] IPC process-return called with details:', returnDetails);
-    const username = currentUser?.username;
-    const userId = currentUser?.id; // Assuming your currentUser object has the DB user ID
+ipcMain.handle('process-return', async (event, frontendReturnDetails) => {
+    // frontendReturnDetails: { itemId, quantityReturned, reason, condition, customerId, notes }
+    console.log('[Main Process] IPC: process-return with details:', frontendReturnDetails);
+    const user = currentUser;
 
-    // Validate input (basic)
-    if (!returnDetails.itemId || !returnDetails.quantityReturned || !returnDetails.reason || !returnDetails.condition) {
-        return { success: false, message: "Missing required return details (Item, Quantity, Reason, Condition)." };
-    }
-
-    const quantityReturned = parseInt(returnDetails.quantityReturned, 10);
-    if (isNaN(quantityReturned) || quantityReturned <= 0) {
-         return { success: false, message: "Invalid quantity returned." };
-    }
-
-    // 1. Prepare data for the returns table
-    const returnRecordData = {
-        item_id: returnDetails.itemId,
-        quantity_returned: quantityReturned,
-        reason: returnDetails.reason,
-        condition: returnDetails.condition,
-        customer_id: returnDetails.customerId || null, // Optional
-        notes: returnDetails.notes || null,           // Optional
-        processed_by_user_id: userId || null        // Optional: Log the user ID from DB
-        // inventory_adjusted defaults to false
-    };
-
-    let createdReturnRecordId = null;
-    let itemDetailsForLog = `Item ID: ${returnDetails.itemId}, Qty: ${quantityReturned}`; // Basic log details
+    if (!user) return { success: false, message: "User not authenticated to process returns." };
+    // Add role checks if needed for who can process returns
 
     try {
-        // 2. Create the return record
-        const createResult = await db.createReturnRecord(returnRecordData);
-        if (!createResult.success || !createResult.returnRecord) {
-            throw new Error(createResult.message || 'Failed to save return record to database.');
+        // 1. Create the main return record in 'returns' table
+        const returnRecordData = {
+            item_id: frontendReturnDetails.itemId,
+            quantity_returned: frontendReturnDetails.quantityReturned,
+            reason: frontendReturnDetails.reason,
+            condition: frontendReturnDetails.condition,
+            customer_id: frontendReturnDetails.customerId || null,
+            notes: frontendReturnDetails.notes || null,
+            processed_by_user_id: user.id, // Log who processed it
+            inventory_adjusted: false // Default to false, will be set true if restocked
+        };
+        const createReturnResult = await db.createReturnRecord(returnRecordData);
+
+        if (!createReturnResult.success || !createReturnResult.returnRecord) {
+            return { success: false, message: createReturnResult.message || "Failed to create return record." };
         }
-        createdReturnRecordId = createResult.returnRecord.id;
-        console.log(`[main.js] Return record created: ${createdReturnRecordId}`);
+        const returnRecord = createReturnResult.returnRecord;
+        let message = `Return ID ${returnRecord.id} processed.`;
 
-         // Fetch item details *after* saving return record for better logging context
-         try {
-             const item = await db.getItemById(returnDetails.itemId);
-             if(item) itemDetailsForLog = `Item: ${item.name} (SKU: ${item.sku || 'N/A'}), Qty: ${quantityReturned}, Reason: ${returnDetails.reason}, Condition: ${returnDetails.condition}`;
-         } catch { /* ignore fetch error for logging */ }
+        // 2. If item is 'Resellable', adjust stock and log movement
+        let restockSuccessful = false;
+        if (frontendReturnDetails.condition === 'Resellable') {
+            const transactionDetailsForDB = {
+                transactionType: 'RETURN_RESTOCK',
+                referenceId: String(returnRecord.id), // Link to the return record
+                referenceType: 'SALES_RETURN',
+                userId: user.id,
+                usernameSnapshot: user.username,
+                notes: `Restocked from Return ID: ${returnRecord.id}. Original reason: ${frontendReturnDetails.reason}`
+            };
 
+            console.log('[Main Process] Calling db.adjustStockQuantity for restock:', frontendReturnDetails.itemId, frontendReturnDetails.quantityReturned, transactionDetailsForDB);
+            const restockResult = await db.adjustStockQuantity(
+                frontendReturnDetails.itemId,
+                frontendReturnDetails.quantityReturned, // Positive to add stock back
+                transactionDetailsForDB
+            );
 
-        // 3. Adjust inventory IF resellable
-        let adjustmentResult = { success: true }; // Assume success if no adjustment needed
-        if (returnDetails.condition === 'Resellable') {
-            console.log(`[main.js] Condition is Resellable. Attempting to increment inventory for item ID: ${returnDetails.itemId}`);
-            adjustmentResult = await db.incrementItemQuantity(returnDetails.itemId, quantityReturned);
-
-            if (!adjustmentResult.success) {
-                // Log the failure but the return record is already saved.
-                // This indicates an inventory inconsistency that needs attention.
-                 logActivity(username, 'Return Inventory Adjustment FAILED', `Return ID: ${createdReturnRecordId}, ${itemDetailsForLog}, Error: ${adjustmentResult.message}`);
-                 console.error(`[main.js] FAILED to adjust inventory for return ${createdReturnRecordId}: ${adjustmentResult.message}`);
-                 // Return success false for the overall operation because inventory failed
-                 return { success: false, message: `Return recorded (ID: ${createdReturnRecordId}), BUT failed to update inventory: ${adjustmentResult.message}. Please check inventory manually.` };
+            if (restockResult.success) {
+                await db.markReturnInventoryAdjusted(returnRecord.id); // Update the return record
+                message += ` Item restocked. New quantity: ${restockResult.newQuantity}.`;
+                restockSuccessful = true;
             } else {
-                 console.log(`[main.js] Inventory adjusted successfully for item ID: ${returnDetails.itemId}`);
-                 // Optionally mark the return record as adjusted
-                 await db.markReturnInventoryAdjusted(createdReturnRecordId); // Fire-and-forget or handle error
+                message += ` WARNING: Failed to restock item. Error: ${restockResult.message}`;
+                console.error(`[Main Process] CRITICAL: Return ${returnRecord.id} processed but item restock failed for item ${frontendReturnDetails.itemId}.`);
+                // You might want to flag this return for manual review
             }
         } else {
-             console.log(`[main.js] Condition is '${returnDetails.condition}'. No inventory adjustment needed.`);
+            message += " Item not restocked due to condition.";
         }
 
-        // 4. Log successful processing
-        logActivity(username, 'Processed product return', `${itemDetailsForLog}${adjustmentResult.success && returnDetails.condition === 'Resellable' ? ' (Inventory Adjusted)' : ''}`);
-        return { success: true, message: `Return processed successfully.${adjustmentResult.success && returnDetails.condition === 'Resellable' ? ' Inventory updated.' : ''}`, returnId: createdReturnRecordId };
+        // 3. General Activity Log
+        const itemInfo = await db.getItemById(frontendReturnDetails.itemId);
+        const activityLogDetails = `Return processed for item ${itemInfo?.name || `ID ${frontendReturnDetails.itemId}`}. Return ID: ${returnRecord.id}. Condition: ${frontendReturnDetails.condition}. ${restockSuccessful ? 'Item restocked.' : 'Item not restocked.'}`;
+        const activityLogResult = await db.addActivityLogEntry({
+            user_identifier: user.username,
+            action: 'Product Return Processed',
+            details: activityLogDetails
+        });
+        if (activityLogResult.success && activityLogResult.entry) {
+            event.sender.send('new-log-entry', activityLogResult.entry);
+        }
+
+        return { success: true, message: message, returnId: returnRecord.id };
 
     } catch (error) {
-        console.error('[main.js] Error processing return:', error);
-        logActivity(username, 'Error processing return', `Details: ${itemDetailsForLog}, Error: ${error.message}`);
-        return { success: false, message: `Failed to process return: ${error.message}` };
+        console.error('[Main Process] Error in process-return IPC handler:', error);
+        return { success: false, message: error.message || "Server error during return processing." };
     }
 });
 
@@ -914,5 +967,336 @@ ipcMain.handle('get-returns', async (event, filters) => {
          return { error: error.message || 'Failed to fetch return records.' };
      }
 });
+ // --- Stock Adjustment Handler ---
+    ipcMain.handle('perform-stock-adjustment', async (event, adjustmentDetails) => {
+        console.log(`[Main Process] perform-stock-adjustment handler invoked with details:`, adjustmentDetails);
+        const username = currentUser?.username;
+
+        try {
+            // --- MODIFICATION START: Enhanced Validation ---
+            if (!adjustmentDetails || adjustmentDetails.itemId === undefined || typeof adjustmentDetails.adjustmentQuantity !== 'number') {
+                console.error('[main.js perform-stock-adjustment] Invalid adjustment details received (itemId or quantity issue):', adjustmentDetails);
+                logActivity(username, 'Stock Adjustment Error', 'Invalid details (itemId/qty) received by main process.');
+                return { success: false, message: 'Invalid adjustment details: Item ID and numerical quantity are required.' };
+            }
+            if (!adjustmentDetails.reason || String(adjustmentDetails.reason).trim() === '') { // Check if reason is empty or just whitespace
+                console.error('[main.js perform-stock-adjustment] Reason is missing or empty from adjustmentDetails.');
+                logActivity(username, 'Stock Adjustment Error', 'Reason for adjustment was missing or empty.');
+                return { success: false, message: 'Reason for adjustment is required.' };
+            }
+            // Check if notes are required for "Other" reason
+            if (String(adjustmentDetails.reason).toLowerCase().includes('other') && (!adjustmentDetails.notes || String(adjustmentDetails.notes).trim() === '')) {
+                 console.error('[main.js perform-stock-adjustment] Notes are required when reason includes "Other".');
+                 logActivity(username, 'Stock Adjustment Error', 'Notes missing for "Other" reason.');
+                 return { success: false, message: 'Notes are required when the reason is "Other (Specify in Notes)".' };
+            }
+            // --- MODIFICATION END: Enhanced Validation ---
+
+
+            // --- MODIFICATION START: Use the mapping function ---
+            const mappedTransactionType = mapReasonToTransactionType(adjustmentDetails.reason);
+            console.log(`[main.js perform-stock-adjustment] User Reason: '${adjustmentDetails.reason}', Mapped Transaction Type: '${mappedTransactionType}'`);
+            // --- MODIFICATION END: Use the mapping function ---
+
+
+            // Prepare context for the db.adjustStockQuantity function
+            const transactionContext = {
+                transactionType: mappedTransactionType, // Use the mapped type
+                referenceId: null, // Typically null for manual adjustments
+                referenceType: 'MANUAL_STOCK_ADJUSTMENT', // A general type for these manual adjustments
+                userId: adjustmentDetails.userId,
+                usernameSnapshot: adjustmentDetails.username,
+                // Combine the original reason and notes for a comprehensive note in the ledger
+                notes: `User Reason: ${adjustmentDetails.reason}. Details: ${adjustmentDetails.notes || 'N/A'}`
+            };
+
+            console.log(`[main.js perform-stock-adjustment] Calling db.adjustStockQuantity for item ID ${adjustmentDetails.itemId} with quantity ${adjustmentDetails.adjustmentQuantity} and context:`, transactionContext);
+
+            // Call the database function
+            const adjustmentResult = await db.adjustStockQuantity(
+                adjustmentDetails.itemId,
+                adjustmentDetails.adjustmentQuantity,
+                transactionContext // Pass the structured context
+            );
+            console.log('[main.js perform-stock-adjustment] db.adjustStockQuantity result:', adjustmentResult);
+
+            if (adjustmentResult.success) {
+                logActivity(
+                    username,
+                    'Performed Stock Adjustment',
+                    `Item ID: ${adjustmentDetails.itemId}, Type: ${mappedTransactionType}, Adj By: ${adjustmentDetails.adjustmentQuantity}, NewQty: ${adjustmentResult.newQuantity}, ReasonGiven: ${adjustmentDetails.reason}`
+                );
+                return { success: true, message: 'Stock adjusted successfully!', newQuantity: adjustmentResult.newQuantity };
+            } else {
+                console.error('[main.js perform-stock-adjustment] Stock adjustment failed in db client:', adjustmentResult.message);
+                logActivity(
+                    username,
+                    'Stock Adjustment Failed',
+                    `Item ID: ${adjustmentDetails.itemId}, DB Error: ${adjustmentResult.message || 'Unknown DB error'}`
+                );
+                return { success: false, message: adjustmentResult.message || 'Failed to adjust stock.' };
+            }
+
+        } catch (error) {
+            console.error('[main.js perform-stock-adjustment] Critical error during stock adjustment:', error);
+            logActivity(
+                username,
+                'Stock Adjustment Error',
+                `Item ID: ${adjustmentDetails?.itemId}, Critical Error: ${error.message}`
+            );
+            return { success: false, message: `An unexpected error occurred: ${error.message}` };
+        }
+    });
+
+
+ipcMain.handle('get-bundles', async (event, filters) => {
+    console.log('[Main Process] get-bundles handler invoked with filters:', filters);
+    // Add authorization if needed (e.g., only certain roles can view bundles)
+    // const user = currentUser;
+    // if (!user) return Promise.reject(new Error("Unauthorized: No user logged in"));
+
+    try {
+        const bundles = await db.getBundles(filters || {}); // Pass filters to your db function
+        return bundles; // db.getBundles should return the array directly or throw an error
+    } catch (error) {
+        console.error('[Main Process] Error in get-bundles handler:', error);
+        // Instead of returning an error object which might not be serializable well,
+        // re-throw the error so the invoke promise in preload rejects.
+        // The renderer's catch block will then handle it.
+        throw error; // Or throw new Error(`Failed to get bundles: ${error.message}`);
+    }
+});
+
+ipcMain.handle('get-bundle-by-id', async (event, bundleId) => {
+    console.log('[Main Process] get-bundle-by-id handler invoked with ID:', bundleId);
+    // Add authorization if needed
+    try {
+        const bundle = await db.getBundleById(bundleId);
+        return bundle;
+    } catch (error) {
+        console.error('[Main Process] Error in get-bundle-by-id handler:', error);
+        throw error;
+    }
+});
+
+ipcMain.handle('create-bundle', async (event, bundleData) => {
+    console.log('[Main Process] create-bundle handler invoked.');
+    const user = currentUser;
+    if (!user || user.role !== 'admin') { // Example authorization
+        return { success: false, message: "Unauthorized to create bundles." };
+    }
+    try {
+        const result = await db.createBundle(bundleData);
+        if (result.success && result.bundle) {
+            await db.addActivityLogEntry({
+                user_identifier: user.username,
+                action: 'Created Bundle',
+                details: `Bundle: ${result.bundle.name} (ID: ${result.bundle.id}, SKU: ${result.bundle.bundle_sku || 'N/A'})`
+            });
+            // Consider sending 'new-log-entry' if needed
+        }
+        return result;
+    } catch (error) {
+        console.error('[Main Process] Error in create-bundle handler:', error);
+        return { success: false, message: `Failed to create bundle: ${error.message}` };
+    }
+});
+
+ipcMain.handle('update-bundle', async (event, bundleId, bundleData) => {
+    console.log('[Main Process] update-bundle handler invoked for ID:', bundleId);
+    const user = currentUser;
+     if (!user || user.role !== 'admin') {
+        return { success: false, message: "Unauthorized to update bundles." };
+    }
+    try {
+        // The db.updateBundle in supabaseClient.js expects (bundleId, bundleData)
+        const result = await db.updateBundle(bundleId, bundleData);
+        if (result.success && result.bundle) {
+             await db.addActivityLogEntry({
+                user_identifier: user.username,
+                action: 'Updated Bundle',
+                details: `Bundle: ${result.bundle.name} (ID: ${result.bundle.id})`
+            });
+        }
+        return result;
+    } catch (error) {
+        console.error('[Main Process] Error in update-bundle handler:', error);
+        return { success: false, message: `Failed to update bundle: ${error.message}` };
+    }
+});
+
+ipcMain.handle('delete-bundle', async (event, bundleId) => {
+    console.log('[Main Process] delete-bundle handler invoked for ID:', bundleId);
+    const user = currentUser;
+    if (!user || user.role !== 'admin') {
+        return { success: false, message: "Unauthorized to delete bundles." };
+    }
+    try {
+        // Fetch bundle info before deleting for logging purposes (optional)
+        const bundleInfo = await db.getBundleById(bundleId);
+        const result = await db.deleteBundle(bundleId);
+        if (result.success && bundleInfo) {
+            await db.addActivityLogEntry({
+                user_identifier: user.username,
+                action: 'Deleted Bundle',
+                details: `Bundle: ${bundleInfo.name} (ID: ${bundleInfo.id})`
+            });
+        }
+        return result;
+    } catch (error) {
+        console.error('[Main Process] Error in delete-bundle handler:', error);
+        return { success: false, message: `Failed to delete bundle: ${error.message}` };
+    }
+});
+
+ipcMain.handle('process-bundle-sale', async (event, { bundleId, saleQuantity = 1 }) => {
+    console.log(`[Main Process] process-bundle-sale handler invoked for Bundle ID: ${bundleId}, Quantity: ${saleQuantity}`);
+    const user = currentUser;
+    // Add authorization if needed (e.g., only staff with sales permission)
+    // if (!user || !user.canProcessSales) return { success: false, message: "Unauthorized" };
+    try {
+        const result = await db.processBundleSale(bundleId, saleQuantity);
+        if (result.success) {
+            const bundleInfo = await db.getBundleById(bundleId);
+            await db.addActivityLogEntry({
+                user_identifier: user?.username || 'System', // Use optional chaining if user might be null for some system sales
+                action: 'Processed Bundle Sale',
+                details: `Bundle: ${bundleInfo?.name || `ID ${bundleId}`} sold. Qty: ${saleQuantity}. Components deducted.`
+            });
+            // event.sender.send('new-log-entry', ...); // If you want real-time log update for this
+        }
+        return result;
+    } catch (error) {
+        console.error('[Main Process] Error in process-bundle-sale handler:', error);
+        return { success: false, message: `Failed to process bundle sale: ${error.message}` };
+    }
+});
+ipcMain.handle('generate-order-number', async () => {
+    try {
+        return await db.generateOrderNumber();
+    } catch (e) { return 'SO-ERR'; }
+});
+
+ipcMain.handle('create-sales-order', async (event, { orderData, orderItemsData }) => {
+    const user = currentUser; // Assuming currentUser is available
+    if (!user) return { success: false, message: "Unauthorized" };
+    try {
+        // Add created_by_user_id to orderData
+        const fullOrderData = { ...orderData, created_by_user_id: user.id };
+        const result = await db.createSalesOrder(fullOrderData, orderItemsData);
+        if (result.success) {
+            await db.addActivityLogEntry({
+                user_identifier: user.username,
+                action: 'Created Sales Order',
+                details: `Order ID: ${result.order.id} (No: ${result.order.order_number || ''}), Total: ${result.order.total_amount}`
+            });
+            // If the order is created directly as 'Fulfilled', stock deduction happens in createSalesOrder/updateSalesOrderStatus
+            // This example assumes 'createSalesOrder' doesn't auto-fulfill. Status change to 'Fulfilled' triggers deduction.
+        }
+        return result;
+    } catch (error) {
+        console.error("Error in create-sales-order IPC:", error);
+        return { success: false, message: error.message };
+    }
+});
+
+ipcMain.handle('get-sales-orders', async (event, filters) => {
+    try {
+        return await db.getSalesOrders(filters || {});
+    } catch (error) { console.error("Error in get-sales-orders IPC:", error); throw error; }
+});
+
+ipcMain.handle('get-sales-order-by-id', async (event, orderId) => {
+    try {
+        return await db.getSalesOrderById(orderId);
+    } catch (error) { console.error("Error in get-sales-order-by-id IPC:", error); throw error; }
+});
+
+ipcMain.handle('update-sales-order-status', async (event, { orderId, newStatus }) => {
+    const user = currentUser;
+    if (!user) return { success: false, message: "Unauthorized" };
+    try {
+        const result = await db.updateSalesOrderStatus(orderId, newStatus, user.id); // Pass user.id for logging if needed
+        if (result.success) {
+            await db.addActivityLogEntry({
+                user_identifier: user.username,
+                action: `Updated Sales Order Status to ${newStatus}`,
+                details: `Order ID: ${orderId}. Stock deductions may have occurred if status is 'Fulfilled'.`
+            });
+            // Send 'new-log-entry' if needed
+        }
+        return result;
+    } catch (error) {
+        console.error("Error in update-sales-order-status IPC:", error);
+        return { success: false, message: error.message };
+    }
+});
+ ipcMain.handle('get-inventory-transactions-for-item', async (event, argsObject) => { // argsObject will be { itemId, limit, offset }
+     // Destructure from argsObject
+     const { itemId, limit, offset } = argsObject;
+
+     console.log(`[main.js] IPC get-inventory-transactions-for-item received argsObject:`, argsObject);
+     try {
+         // The itemId received here IS the actual ID value from selectedItem.value
+         if (itemId === undefined || itemId === null) {
+             throw new Error("Item ID is required to fetch transactions.");
+         }
+         // No need for the 'actualItemId' extraction logic if preload sends the primitive ID correctly.
+         // typeof itemId should be 'number' or 'string' (if it's a UUID) here.
+
+         // Add a type check to be safe, because the log shows [object Object]
+         if (typeof itemId === 'object') {
+             console.error(`[main.js] ERROR: itemId is still an object in main.js: ${JSON.stringify(itemId)}. This should not happen with the corrected preload.`);
+             throw new Error(`Received an object for itemId instead of a primitive value.`);
+         }
+
+
+         const effectiveLimit = limit === undefined ? 15 : parseInt(limit, 10);
+         const effectiveOffset = offset === undefined ? 0 : parseInt(offset, 10);
+
+         return await db.getInventoryTransactionsForItem(itemId, effectiveLimit, effectiveOffset);
+     } catch (error) {
+         console.error(`[main.js] Error in get-inventory-transactions-for-item handler for item ${itemId}:`, error);
+         logActivity(currentUser?.username, 'Error fetching inventory ledger', `Item ID: ${itemId}, Error: ${error.message}`);
+         return { error: error.message || `Failed to fetch transactions for item ${itemId}.` };
+     }
+ });
+ // --- NEW STOCK TRANSFER IPC HANDLERS ---
+   ipcMain.handle('create-stock-transfer', async (event, transferDetailsFrontend) => {
+     const user = currentUser;
+     if (!user) return { success: false, message: "User not authenticated." };
+     // Add role check if only specific roles can perform transfers
+
+     const transferDetailsForDB = {
+       ...transferDetailsFrontend,
+       userId: user.id,
+       usernameSnapshot: user.username
+     };
+
+     logActivity(user.username, 'Initiated Stock Transfer', `Item ID: ${transferDetailsForDB.itemId}, Qty: ${transferDetailsForDB.quantityTransferred}, From: ${transferDetailsForDB.sourceLocation}, To: ${transferDetailsForDB.destinationLocation}`);
+     try {
+       const result = await db.createStockTransferAndAdjustInventory(transferDetailsForDB);
+       if (result.success) {
+         logActivity(user.username, 'Stock Transfer Successful', `Transfer ID: ${result.transfer.id}. ${result.message}`);
+       } else {
+         logActivity(user.username, 'Stock Transfer Failed', `Item ID: ${transferDetailsForDB.itemId}. Error: ${result.message}`);
+       }
+       return result;
+     } catch (error) {
+       console.error('[main.js] Error in create-stock-transfer handler:', error);
+       logActivity(user.username, 'Stock Transfer Critical Error', `Item ID: ${transferDetailsForDB.itemId}. Error: ${error.message}`);
+       return { success: false, message: `Critical error processing transfer: ${error.message}` };
+     }
+   });
+
+   ipcMain.handle('get-stock-transfers', async (event, filters) => {
+     try {
+       return await db.getStockTransfers(filters || {});
+     } catch (error) {
+       console.error('[main.js] Error in get-stock-transfers handler:', error);
+       // logActivity might be noisy here if it's just fetching a list
+       throw error; // Let preload/renderer handle promise rejection
+     }
+   });
 
 // --- END OF FILE ---

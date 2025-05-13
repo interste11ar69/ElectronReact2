@@ -18,7 +18,7 @@ function ProductFormPage({ currentUser }) { // currentUser is used for role-base
         cost_price: '',
         quantity: '', // Quantity is set on creation ONLY via this form
         category: '',
-        storage: '',
+        storage: '', // This will be the selected storage location
         variant: '',
         status: 'Normal',
     };
@@ -31,7 +31,9 @@ function ProductFormPage({ currentUser }) { // currentUser is used for role-base
     const [showSuccessModal, setShowSuccessModal] = useState(false);
 
     const categories = ["Beauty Soap", "Skincare", "Wellness", "Cosmetics", "Soap", "Body Care", "Hair Care"];
-    const storageOptions = ["STORE", "Main Warehouse", "Retail Shelf", "Online Fulfillment", "STORE A", "STORE B"];
+    // --- MODIFICATION START: Update storageOptions to match the diagram ---
+    const storageOptions = ["STORE", "Warehouse A", "Warehouse 200"];
+    // --- MODIFICATION END ---
 
     useEffect(() => {
         if (isEditing && itemIdFromParams) {
@@ -45,14 +47,12 @@ function ProductFormPage({ currentUser }) { // currentUser is used for role-base
                             name: item.name || '',
                             sku: item.sku || '',
                             description: item.description || '',
-                            // --- MODIFICATION START: Fetch price correctly ---
-                            cost_price: item.cost_price !== null ? String(item.cost_price) : '', // Fetch price
-                            // --- MODIFICATION END ---
-                            // --- MODIFICATION START: Fetch quantity correctly (removed duplication) ---
-                            quantity: item.quantity !== null ? String(item.quantity) : '0', // Display current quantity
-                            // --- MODIFICATION END ---
+                            cost_price: item.cost_price !== null ? String(item.cost_price) : '',
+                            quantity: item.quantity !== null ? String(item.quantity) : '0',
                             category: item.category || '',
-                            storage: item.storage_location || item.storage || '',
+                            // --- MODIFICATION START: Ensure 'storage' field is used for item.storage_location ---
+                            storage: item.storage_location || '', // Use item.storage_location
+                            // --- MODIFICATION END ---
                             variant: item.variant || '',
                             status: item.status || 'Normal',
                         });
@@ -67,11 +67,17 @@ function ProductFormPage({ currentUser }) { // currentUser is used for role-base
             };
             fetchItemData();
         } else {
-            setFormData(initialFormData);
+            // --- MODIFICATION START: Set default storage for new items if desired, or leave blank ---
+            // Option 1: Leave blank, user must select
+            // initialFormData.storage = '';
+            // Option 2: Set a default, e.g., "STORE"
+            // initialFormData.storage = "STORE";
+            setFormData({...initialFormData, storage: ""}); // Defaulting to blank, requiring selection
+            // --- MODIFICATION END ---
             setConfirmDetails(false);
             setIsLoading(false);
         }
-    }, [itemIdFromParams, isEditing]);
+    }, [itemIdFromParams, isEditing]); // Removed initialFormData from dependency array as it's constant here
 
     const handleChange = (e) => {
         const { name, value, type, checked } = e.target;
@@ -96,10 +102,11 @@ function ProductFormPage({ currentUser }) { // currentUser is used for role-base
         }
         if (!formData.name.trim()) { setError('Product Name is required.'); return; }
         if (!formData.category) { setError('Product Category is required.'); return; }
+        // --- MODIFICATION START: Ensure formData.storage is used for validation ---
         if (!formData.storage) { setError('Storage Location is required.'); return; }
+        // --- MODIFICATION END ---
 
-        // --- MODIFICATION START: Validate initial quantity ONLY if creating ---
-        let quantity = 0; // Default for update payload where we don't send quantity
+        let quantity = 0;
         if (!isEditing) {
             quantity = parseInt(formData.quantity, 10);
             if (formData.quantity === '' || isNaN(quantity) || quantity < 0) {
@@ -107,67 +114,53 @@ function ProductFormPage({ currentUser }) { // currentUser is used for role-base
                 return;
             }
         }
-        // --- MODIFICATION END ---
 
-        // --- MODIFICATION START: Price validation moved inside role check ---
-        // const costPrice = parseFloat(formData.cost_price); // Moved validation below
-        // --- MODIFICATION END ---
-
-        // --- MODIFICATION START: Prevent non-admins from changing sensitive fields on existing items ---
         if (isEditing && currentUser?.role !== 'admin') {
-            // Re-fetch original item data to compare sensitive fields securely.
             const originalItem = await window.electronAPI.getItemById(itemIdFromParams);
             if (originalItem) {
                 if (formData.sku !== originalItem.sku) {
                     setError("Employees cannot change the SKU of an existing product.");
                     setIsSubmitting(false); return;
                 }
-                // Validate price format first
                 const costPrice = parseFloat(formData.cost_price);
                  if (formData.cost_price === '' || isNaN(costPrice) || costPrice < 0) {
                     setError('Valid Product Price is required (e.g., 60.00).');
                     setIsSubmitting(false); return;
                 }
-                // Then compare price
                 if (costPrice !== parseFloat(originalItem.cost_price)) {
                     setError("Employees cannot change the Price of an existing product.");
                     setIsSubmitting(false); return;
                 }
             } else {
-                 setError("Could not verify original item data. Update blocked."); // Handle case where re-fetch fails
+                 setError("Could not verify original item data. Update blocked.");
                  setIsSubmitting(false); return;
             }
         } else {
-             // Validate price for admins editing or anyone creating
              const costPrice = parseFloat(formData.cost_price);
              if (formData.cost_price === '' || isNaN(costPrice) || costPrice < 0) {
                  setError('Valid Product Price is required (e.g., 60.00).');
                  return;
              }
         }
-        // --- MODIFICATION END ---
-
 
         setIsSubmitting(true);
 
-        // --- MODIFICATION START: Construct payload carefully ---
         const itemDataToSave = {
             name: formData.name.trim(),
             sku: formData.sku.trim() || null,
             description: formData.description.trim() || null,
-            cost_price: parseFloat(formData.cost_price), // Use parsed float
+            cost_price: parseFloat(formData.cost_price),
             category: formData.category,
-            storage_location: formData.storage,
+            // --- MODIFICATION START: Ensure 'storage_location' is used for saving ---
+            storage_location: formData.storage, // Send formData.storage as storage_location
+            // --- MODIFICATION END ---
             variant: formData.variant.trim() || null,
             status: formData.status,
         };
 
-        // Only include quantity if creating a new item
         if (!isEditing) {
-            itemDataToSave.quantity = quantity; // Use parsed quantity
+            itemDataToSave.quantity = quantity;
         }
-        // --- MODIFICATION END ---
-
 
         if (isEditing) {
             itemDataToSave.id = parseInt(itemIdFromParams, 10);
@@ -178,10 +171,6 @@ function ProductFormPage({ currentUser }) { // currentUser is used for role-base
         try {
             let result;
             if (isEditing) {
-                // --- MODIFICATION START: Ensure backend function ignores quantity field ---
-                // The backend `updateItem` function should be designed to ignore 'quantity'.
-                // If not, explicitly remove it here: delete itemDataToSave.quantity;
-                // --- MODIFICATION END ---
                 if (typeof window.electronAPI.updateItem !== 'function') throw new TypeError('window.electronAPI.updateItem is not a function.');
                 result = await window.electronAPI.updateItem(itemDataToSave);
             } else {
@@ -214,12 +203,10 @@ function ProductFormPage({ currentUser }) { // currentUser is used for role-base
         return <div className="page-container" style={{ padding: '2rem', textAlign: 'center' }}>Loading product details...</div>;
     }
 
-    // --- MODIFICATION START: Determine if fields should be disabled ---
     const isAdmin = currentUser?.role === 'admin';
     const disableSkuField = isEditing && !isAdmin;
     const disablePriceField = isEditing && !isAdmin;
-    const disableQuantityField = isEditing; // Quantity is ALWAYS disabled when editing via this form
-    // --- MODIFICATION END ---
+    const disableQuantityField = isEditing;
 
     return (
         <div className="product-form-page page-container">
@@ -230,11 +217,9 @@ function ProductFormPage({ currentUser }) { // currentUser is used for role-base
                     </button>
                     <div>
                         <h1>{isEditing ? 'EDIT STOCK DETAILS' : 'NEW STOCK DETAILS'}</h1>
-                        {/* --- MODIFICATION START: Update subtitle --- */}
                         <p className="form-subtitle">
                            {isEditing ? 'Edit product information. Stock quantity is adjusted via Returns, Receiving, or Stock Counts.' : 'Input all product information below.'}
                         </p>
-                        {/* --- MODIFICATION END --- */}
                     </div>
                 </div>
             </header>
@@ -242,7 +227,6 @@ function ProductFormPage({ currentUser }) { // currentUser is used for role-base
             {error && <div className="error-message card" role="alert">Error: {error}</div>}
 
             <form onSubmit={handleSubmit} className="product-form card">
-                 {/* Row 1: Category & Storage */}
                  <div className="form-row">
                      <div className="form-group form-group-inline">
                          <label htmlFor="category">Choose Product Category *</label>
@@ -255,6 +239,7 @@ function ProductFormPage({ currentUser }) { // currentUser is used for role-base
                          </div>
                      </div>
                      <div className="form-group form-group-inline">
+                         {/* --- MODIFICATION START: Ensure 'storage' field and state are used for the dropdown --- */}
                          <label htmlFor="storage">Choose Storage *</label>
                          <div className="input-with-icon">
                             <FaThLarge className="input-icon" />
@@ -263,10 +248,10 @@ function ProductFormPage({ currentUser }) { // currentUser is used for role-base
                                  {storageOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}
                              </select>
                          </div>
+                         {/* --- MODIFICATION END --- */}
                      </div>
                  </div>
 
-                 {/* Row 2: Name & Price */}
                  <div className="form-row">
                      <div className="form-group form-group-inline">
                          <label htmlFor="name">Product Name *</label>
@@ -274,7 +259,6 @@ function ProductFormPage({ currentUser }) { // currentUser is used for role-base
                      </div>
                      <div className="form-group form-group-inline">
                          <label htmlFor="cost_price">Set Product Price *</label>
-                          {/* --- MODIFICATION START: Disable price field if editing and not admin --- */}
                          <input
                             type="number"
                             id="cost_price"
@@ -287,23 +271,18 @@ function ProductFormPage({ currentUser }) { // currentUser is used for role-base
                             required
                             disabled={disablePriceField}
                             title={disablePriceField ? "Only admins can change the price of an existing product." : ""}
-                            style={disablePriceField ? { backgroundColor: '#eee' } : {}} // Visual cue for disabled
+                            style={disablePriceField ? { backgroundColor: '#eee' } : {}}
                          />
-                         {/* --- MODIFICATION END --- */}
                      </div>
                  </div>
 
-                 {/* Row 3: Variant, Quantity, Status */}
                  <div className="form-row three-cols">
                      <div className="form-group form-group-inline">
                          <label htmlFor="variant">Product Variant (Optional)</label>
                          <input type="text" id="variant" name="variant" value={formData.variant} onChange={handleChange} placeholder="e.g., 135 grams" />
                      </div>
                      <div className="form-group form-group-inline">
-                         {/* --- MODIFICATION START: Adjust label based on mode --- */}
                          <label htmlFor="quantity">{isEditing ? 'Current Stock (Read-Only)' : 'Initial Stock Quantity *'}</label>
-                         {/* --- MODIFICATION END --- */}
-                         {/* --- MODIFICATION START: Disable quantity field if editing --- */}
                          <input
                             type="number"
                             id="quantity"
@@ -311,13 +290,12 @@ function ProductFormPage({ currentUser }) { // currentUser is used for role-base
                             value={formData.quantity}
                             onChange={handleChange}
                             min="0"
-                            placeholder={isEditing ? "" : "e.g., 100"} // Placeholder only for new items
-                            required={!isEditing} // Only required when creating
+                            placeholder={isEditing ? "" : "e.g., 100"}
+                            required={!isEditing}
                             disabled={disableQuantityField}
                             title={disableQuantityField ? "Quantity is adjusted via specific inventory transactions (Receiving, Returns, Adjustments)." : ""}
-                            style={disableQuantityField ? { backgroundColor: '#eee' } : {}} // Visual cue for disabled
+                            style={disableQuantityField ? { backgroundColor: '#eee' } : {}}
                          />
-                         {/* --- MODIFICATION END --- */}
                      </div>
                      <div className="form-group form-group-inline">
                          <label>Set Product Status</label>
@@ -329,10 +307,8 @@ function ProductFormPage({ currentUser }) { // currentUser is used for role-base
                      </div>
                  </div>
 
-                 {/* Row 4: SKU */}
                  <div className="form-group">
                      <label htmlFor="sku">Product SKU Code (Optional)</label>
-                      {/* --- MODIFICATION START: Disable SKU field if editing and not admin --- */}
                      <input
                         type="text"
                         id="sku"
@@ -342,12 +318,10 @@ function ProductFormPage({ currentUser }) { // currentUser is used for role-base
                         placeholder="e.g., BIOSKIN-KS-135"
                         disabled={disableSkuField}
                         title={disableSkuField ? "Only admins can change the SKU of an existing product." : ""}
-                        style={disableSkuField ? { backgroundColor: '#eee' } : {}} // Visual cue for disabled
+                        style={disableSkuField ? { backgroundColor: '#eee' } : {}}
                      />
-                      {/* --- MODIFICATION END --- */}
                  </div>
 
-                 {/* Row 5: Description */}
                  <div className="form-group">
                     <label htmlFor="description">Product Description (Optional)</label>
                     <textarea
@@ -360,7 +334,6 @@ function ProductFormPage({ currentUser }) { // currentUser is used for role-base
                     ></textarea>
                 </div>
 
-                {/* Row 6: Submit and Confirm */}
                 <div className="form-footer">
                     <div className="confirm-checkbox">
                          <input

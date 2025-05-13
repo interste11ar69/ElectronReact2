@@ -2,18 +2,17 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Select from 'react-select';
-import { FaExchangeAlt, FaSave, FaTimes, FaInfoCircle } from 'react-icons/fa';
-// You might want a dedicated CSS file, or reuse styles from StockAdjustmentPage.css
+import { FaExchangeAlt, FaSave, FaInfoCircle } from 'react-icons/fa'; // Removed FaTimes as it wasn't used for a cancel button icon here
 import './StockAdjustmentPage.css'; // Example: Reusing some styles
 
 function StockTransferPage({ currentUser }) {
     const navigate = useNavigate();
-    const [selectedItem, setSelectedItem] = useState(null); // { value: id, label: '...', currentQty: X, currentLocation: 'Y' }
+    const [selectedItem, setSelectedItem] = useState(null);
     const [quantity, setQuantity] = useState('');
-    const [sourceLocation, setSourceLocation] = useState(''); // Will be auto-filled from selected item
+    const [sourceLocation, setSourceLocation] = useState('');
     const [destinationLocation, setDestinationLocation] = useState('');
     const [notes, setNotes] = useState('');
-    const [referenceNumber, setReferenceNumber] = useState(''); // Optional
+    const [referenceNumber, setReferenceNumber] = useState('');
 
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [error, setError] = useState('');
@@ -21,9 +20,8 @@ function StockTransferPage({ currentUser }) {
 
     const [itemOptions, setItemOptions] = useState([]);
     const [isItemsLoading, setIsItemsLoading] = useState(false);
-    const [storageOptionsState, setStorageOptionsState] = useState([]); // For destination
+    const [storageOptionsState, setStorageOptionsState] = useState([]);
 
-    // Fetch items and storage locations
     useEffect(() => {
         const loadData = async () => {
             setIsItemsLoading(true);
@@ -37,8 +35,9 @@ function StockTransferPage({ currentUser }) {
                 }));
                 setItemOptions(options);
 
-                // Define or fetch storage locations
-                const commonStorageOptions = ["Main Warehouse", "Retail Shelf", "Online Fulfillment", "STORE A", "STORE B", "Undefined Location"];
+                // --- MODIFICATION START: Update commonStorageOptions ---
+                const commonStorageOptions = ["STORE", "Warehouse A", "Warehouse 200"];
+                // --- MODIFICATION END ---
                 setStorageOptionsState(commonStorageOptions.map(s => ({ value: s, label: s })));
 
             } catch (err) {
@@ -55,7 +54,7 @@ function StockTransferPage({ currentUser }) {
         setSelectedItem(selectedOption);
         if (selectedOption) {
             setSourceLocation(selectedOption.currentLocation);
-            setDestinationLocation(''); // Reset destination
+            setDestinationLocation('');
             setError('');
             setSuccessMessage('');
         } else {
@@ -76,7 +75,6 @@ function StockTransferPage({ currentUser }) {
         if (sourceLocation === destinationLocation) { setError('Source and destination locations cannot be the same.'); return; }
         if (qty > selectedItem.currentQty) { setError(`Cannot transfer ${qty}. Only ${selectedItem.currentQty} available at ${sourceLocation}.`); return; }
 
-
         setIsSubmitting(true);
         const transferDetails = {
             itemId: selectedItem.value,
@@ -85,7 +83,6 @@ function StockTransferPage({ currentUser }) {
             destinationLocation: destinationLocation,
             notes: notes.trim(),
             referenceNumber: referenceNumber.trim() || null,
-            // userId and usernameSnapshot will be added by main.js
         };
 
         try {
@@ -98,8 +95,7 @@ function StockTransferPage({ currentUser }) {
                 setDestinationLocation('');
                 setNotes('');
                 setReferenceNumber('');
-                // Refresh item options as quantities and locations have changed
-                // This is a quick way; ideally, you'd update only the affected item
+
                 const items = await window.electronAPI.getItems({});
                 const options = items.map(item => ({
                     value: item.id,
@@ -147,7 +143,7 @@ function StockTransferPage({ currentUser }) {
                         isLoading={isItemsLoading}
                         isClearable
                         placeholder="Search or select product..."
-                        styles={{ container: base => ({ ...base, zIndex: 10 }) }}
+                        styles={{ container: base => ({ ...base, zIndex: 10 }) }} // Increased zIndex to ensure it's above next select if they overlap
                         required
                     />
                     {selectedItem && (
@@ -165,7 +161,7 @@ function StockTransferPage({ currentUser }) {
                             id="sourceLocation"
                             value={sourceLocation}
                             className="form-control"
-                            readOnly // Auto-filled from selected item
+                            readOnly
                             style={{ backgroundColor: '#e9ecef' }}
                         />
                     </div>
@@ -173,7 +169,7 @@ function StockTransferPage({ currentUser }) {
                         <label htmlFor="destinationLocation">To Location (Destination) *</label>
                         <Select
                             id="destinationLocation"
-                            options={storageOptionsState.filter(opt => opt.value !== sourceLocation)} // Exclude source
+                            options={storageOptionsState.filter(opt => opt.value !== sourceLocation)}
                             value={storageOptionsState.find(opt => opt.value === destinationLocation)}
                             onChange={(selected) => setDestinationLocation(selected ? selected.value : '')}
                             isDisabled={!selectedItem}
@@ -213,7 +209,6 @@ function StockTransferPage({ currentUser }) {
                     </div>
                 </div>
 
-
                 <div className="form-group">
                     <label htmlFor="notesTransfer">Notes (Optional)</label>
                     <textarea
@@ -231,7 +226,7 @@ function StockTransferPage({ currentUser }) {
                     <button
                         type="button"
                         className="button button-secondary"
-                        onClick={() => navigate('/')} // Or to an inventory page
+                        onClick={() => navigate('/')}
                         disabled={isSubmitting}
                         style={{marginRight: '1rem'}}
                     >
@@ -240,7 +235,7 @@ function StockTransferPage({ currentUser }) {
                     <button
                         type="submit"
                         className="button button-primary save-button"
-                        disabled={isSubmitting || !selectedItem || !destinationLocation || !quantity || (selectedItem && parseInt(quantity) > selectedItem.currentQty)}
+                        disabled={isSubmitting || !selectedItem || !destinationLocation || !quantity || (selectedItem && parseInt(quantity) > selectedItem.currentQty) || (sourceLocation === destinationLocation && destinationLocation !== '')}
                     >
                         <FaExchangeAlt style={{ marginRight: '8px' }} />
                         {isSubmitting ? 'Processing...' : 'Confirm Transfer'}

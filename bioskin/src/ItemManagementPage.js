@@ -4,10 +4,9 @@ import { useNavigate } from 'react-router-dom';
 import ItemList from './ItemList';
 import {
     FaSearch,
-    // FaSlidersH, // Not used, can be removed if you don't plan to use it for advanced filters
     FaThLarge,
     FaPlus,
-    FaFileAlt
+    // FaFileAlt // Not used in this file, can be removed if not planned for export button here
 } from 'react-icons/fa';
 import './ItemManagementPage.css';
 
@@ -20,35 +19,31 @@ function ItemManagementPage({ currentUser }) {
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedCategory, setSelectedCategory] = useState('');
     const [selectedStorage, setSelectedStorage] = useState('');
-    // --- CORRECTED: Only one declaration of debouncedSearchTerm ---
     const [debouncedSearchTerm, setDebouncedSearchTerm] = useState(searchTerm);
 
     // State for sorting
-    const [sortBy, setSortBy] = useState('created_at'); // Default sort: by creation date
-    const [sortOrder, setSortOrder] = useState('desc');   // Default order: descending (newest first)
+    const [sortBy, setSortBy] = useState('created_at');
+    const [sortOrder, setSortOrder] = useState('desc');
 
     const navigate = useNavigate();
 
-    // Debounce search term
     useEffect(() => {
         const timerId = setTimeout(() => {
             setDebouncedSearchTerm(searchTerm);
-        }, 500); // 500ms delay
+        }, 500);
 
         return () => {
             clearTimeout(timerId);
         };
     }, [searchTerm]);
 
-
-    // Modified loadItems to include sorting and filters
     const loadItems = useCallback(async () => {
         setIsLoading(true);
         setError(null);
 
         const filterPayload = {
             category: selectedCategory || null,
-            storageLocation: selectedStorage || null,
+            storageLocation: selectedStorage || null, // Will send the selected storage filter value
             searchTerm: debouncedSearchTerm || null,
             sortBy: sortBy,
             sortOrder: sortOrder
@@ -59,7 +54,6 @@ function ItemManagementPage({ currentUser }) {
         try {
             const fetchedItemsResult = await window.electronAPI.getItems(filterPayload);
 
-            // Check if the result itself indicates an error (as returned by your main.js)
             if (fetchedItemsResult && fetchedItemsResult.error) {
                 console.error("ItemManagementPage: Error from backend getItems:", fetchedItemsResult.error);
                 setError(`Failed to load items: ${fetchedItemsResult.error}`);
@@ -67,36 +61,30 @@ function ItemManagementPage({ currentUser }) {
             } else if (fetchedItemsResult && Array.isArray(fetchedItemsResult)) {
                 setItems(fetchedItemsResult);
             } else {
-                // This case handles unexpected non-array, non-error responses
                 console.warn("ItemManagementPage: getItems did not return an array or a known error structure. Received:", fetchedItemsResult);
                 setError("Received unexpected data format for items.");
                 setItems([]);
             }
-        } catch (err) { // Catch errors from the window.electronAPI call itself (e.g., IPC issues)
+        } catch (err) {
             console.error("ItemManagementPage: Critical error loading items:", err.message, err.stack);
             setError(`Failed to load items: ${err.message}`);
             setItems([]);
         } finally {
             setIsLoading(false);
         }
-    }, [selectedCategory, selectedStorage, debouncedSearchTerm, sortBy, sortOrder]); // Removed state setters from dependencies
+    }, [selectedCategory, selectedStorage, debouncedSearchTerm, sortBy, sortOrder]);
 
     useEffect(() => {
         loadItems();
-    }, [loadItems]); // loadItems is the sole dependency here
+    }, [loadItems]);
 
-
-    // --- SORTING HANDLER FUNCTIONS ---
     const handleSort = (newSortBy) => {
         if (sortBy === newSortBy) {
             setSortOrder(prevOrder => prevOrder === 'asc' ? 'desc' : 'asc');
         } else {
             setSortBy(newSortBy);
-            // When changing column, usually default to 'asc'
-            // but for 'quantity', 'asc' (lowest first) is often desired initially.
             setSortOrder(newSortBy === 'quantity' ? 'asc' : 'asc');
         }
-        // loadItems will be called by its own useEffect due to sortBy/sortOrder change in its dependency (loadItems itself)
     };
 
     const navigateToEdit = (item) => navigate(`/products/${item.id}/edit`);
@@ -104,12 +92,12 @@ function ItemManagementPage({ currentUser }) {
 
     const handleDeleteItem = async (itemId) => {
         if (window.confirm('Are you sure you want to delete this item? This action cannot be undone.')) {
-            setError(null); // Clear previous errors
+            setError(null);
             try {
                 const result = await window.electronAPI.deleteItem(itemId);
                 if (result.success) {
                     console.log(result.message);
-                    loadItems(); // Reload items to reflect deletion
+                    loadItems();
                 } else {
                     setError(result.message || 'Failed to delete item.');
                 }
@@ -120,17 +108,15 @@ function ItemManagementPage({ currentUser }) {
         }
     };
 
-    // Data for dropdowns (can be fetched from DB in a real app if dynamic)
     const categories = ["Skincare", "Wellness", "Cosmetics", "Soap", "Beauty Soap", "Body Care", "Hair Care", "Uncategorized"];
-    const storageOptions = ["Main Warehouse", "Retail Shelf", "Online Fulfillment", "STORE", "STORE A", "STORE B", "Undefined Location"];
-
-    // Helper for sort indicator is now inside ItemList.js, no longer needed here.
+    // --- MODIFICATION START: Update storageOptions to match ProductFormPage and diagram ---
+    const storageOptions = ["STORE", "Warehouse A", "Warehouse 200"];
+    // --- MODIFICATION END ---
 
     return (
         <div className="item-management-page page-container">
             <header className="page-header-alt">
                 <h1>Products List</h1>
-                {/* Add export/import buttons or other header actions if desired */}
             </header>
 
             <div className="content-block-wrapper">
@@ -145,9 +131,6 @@ function ItemManagementPage({ currentUser }) {
                                     value={searchTerm}
                                     onChange={(e) => setSearchTerm(e.target.value)}
                                 />
-                                {/* If you add advanced filter options:
-                                <FaSlidersH className="filter-action-icon" title="Advanced filters" onClick={() => alert('Advanced filters UI coming soon!')}/>
-                                */}
                             </div>
                             <div className="filter-dropdown-group">
                                 <FaThLarge className="filter-icon" />
@@ -161,13 +144,16 @@ function ItemManagementPage({ currentUser }) {
                                 </select>
                             </div>
                         </div>
+                        {/* Storage Location Filter Dropdown */}
                         <select
                             value={selectedStorage}
                             onChange={(e) => setSelectedStorage(e.target.value)}
                             className="filter-dropdown standalone-filter storage-filter-full-width"
                         >
                             <option value="">All Storage Locations</option>
+                            {/* --- MODIFICATION START: Map over the updated storageOptions --- */}
                             {storageOptions.map(store => <option key={store} value={store}>{store}</option>)}
+                            {/* --- MODIFICATION END --- */}
                         </select>
                     </div>
                 </div>
@@ -187,9 +173,9 @@ function ItemManagementPage({ currentUser }) {
                                 onEdit={navigateToEdit}
                                 onDelete={currentUser?.role === 'admin' ? handleDeleteItem : null}
                                 userRole={currentUser?.role}
-                                onSort={handleSort} // Pass the sort handler
-                                currentSortBy={sortBy} // Pass current sort column
-                                currentSortOrder={sortOrder} // Pass current sort direction
+                                onSort={handleSort}
+                                currentSortBy={sortBy}
+                                currentSortOrder={sortOrder}
                             />
                         )}
                     </div>
@@ -199,6 +185,12 @@ function ItemManagementPage({ currentUser }) {
                     <button className="button" onClick={navigateToAddNew}>
                         <FaPlus style={{marginRight: '8px'}} /> Add New Stock
                     </button>
+                    {/* You could add an export button here if desired, linking to the export functionality */}
+                    {/* Example:
+                    <button className="button button-secondary" onClick={handleExport} disabled={isExporting}>
+                        <FaFileAlt style={{marginRight: '8px'}} /> {isExporting ? 'Exporting...' : 'Export All Items'}
+                    </button>
+                    */}
                 </div>
             </div>
         </div>

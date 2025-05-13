@@ -19,7 +19,8 @@ const TRANSACTION_TYPES = {
     TRANSFER_ERROR: 'ADJUSTMENT_TRANSFER_ERROR',
     FOUND_STOCK: 'ADJUSTMENT_FOUND_STOCK',
     OTHER: 'MANUAL_ADJUSTMENT_OTHER',
-    UNKNOWN: 'MANUAL_ADJUSTMENT_UNKNOWN'
+    UNKNOWN: 'MANUAL_ADJUSTMENT_UNKNOWN',
+    GOODS_RECEIVED_FACTORY: 'ADJUSTMENT_GOODS_RECEIVED_FACTORY',
     // Add other transaction types used elsewhere (e.g., SALE_ITEM, RETURN_RESELLABLE) if this function might be used more broadly,
     // or keep it specific to stock adjustments.
 };
@@ -103,19 +104,22 @@ function mapReasonToTransactionType(reasonString) {
 
     const reasonLower = String(reasonString).toLowerCase().trim(); // Ensure it's a string before toLowerCase
 
-    if (reasonLower.includes('cycle count')) return TRANSACTION_TYPES.CYCLE_COUNT;
-    if (reasonLower.includes('damaged')) return TRANSACTION_TYPES.DAMAGED;
-    if (reasonLower.includes('expired')) return TRANSACTION_TYPES.EXPIRED;
+    // More specific matches first
+    if (reasonLower === 'goods received from factory') return TRANSACTION_TYPES.GOODS_RECEIVED_FACTORY;
+    if (reasonLower === 'cycle count adjustment') return TRANSACTION_TYPES.CYCLE_COUNT;
+    if (reasonLower === 'damaged goods write-off') return TRANSACTION_TYPES.DAMAGED;
+    if (reasonLower === 'expired stock write-off') return TRANSACTION_TYPES.EXPIRED;
+    if (reasonLower === 'internal use') return TRANSACTION_TYPES.INTERNAL_USE;
+    if (reasonLower === 'stock transfer error correction') return TRANSACTION_TYPES.TRANSFER_ERROR;
+    if (reasonLower === 'found inventory') return TRANSACTION_TYPES.FOUND_STOCK;
+    if (reasonLower === 'other (specify in notes)') return TRANSACTION_TYPES.OTHER; // Exact match for this specific "Other"
+
+    // Broader includes (be careful with order if keywords overlap)
     if (reasonLower.includes('sample') || reasonLower.includes('marketing')) return TRANSACTION_TYPES.MARKETING;
     if (reasonLower.includes('gift') || reasonLower.includes('giveaway')) return TRANSACTION_TYPES.GIFT;
-    if (reasonLower.includes('internal use')) return TRANSACTION_TYPES.INTERNAL_USE; // This will catch "Internal Use"
-    if (reasonLower.includes('transfer error')) return TRANSACTION_TYPES.TRANSFER_ERROR;
-    if (reasonLower.includes('found')) return TRANSACTION_TYPES.FOUND_STOCK;
-    if (reasonLower.includes('other')) return TRANSACTION_TYPES.OTHER;
 
     // If no specific keyword match, log a warning and use a generic fallback.
-    // This helps identify if new reasons are added to the frontend without updating the mapping.
-    console.warn(`[mapReasonToTransactionType] Unmapped reason: '${reasonString}'. Defaulting to ${TRANSACTION_TYPES.UNKNOWN}. Consider adding a specific mapping.`);
+    console.warn(`[mapReasonToTransactionType] Unmapped reason: '${reasonString}'. Defaulting to ${TRANSACTION_TYPES.UNKNOWN}. Consider adding a specific mapping if this reason is common.`);
     return TRANSACTION_TYPES.UNKNOWN;
 }
 

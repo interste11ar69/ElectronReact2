@@ -2,11 +2,12 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Select from 'react-select'; // Use react-select for searchable item dropdown
-import { FaSave, FaTimes, FaInfoCircle } from 'react-icons/fa';
-import './StockAdjustmentPage.css'; // Create this CSS file in Step 2
+import { FaSave, FaInfoCircle } from 'react-icons/fa'; // Removed FaTimes as it's not used
+import './StockAdjustmentPage.css';
 
-// Predefined standard adjustment reasons
+// --- MODIFICATION START: Add new reasons ---
 const adjustmentReasons = [
+    'Goods Received from Factory',
     'Cycle Count Adjustment',
     'Damaged Goods Write-off',
     'Expired Stock Write-off',
@@ -17,33 +18,32 @@ const adjustmentReasons = [
     'Found Inventory',
     'Other (Specify in Notes)',
 ];
+// --- MODIFICATION END ---
 
 function StockAdjustmentPage({ currentUser }) {
     const navigate = useNavigate();
-    const [selectedItem, setSelectedItem] = useState(null); // { value: id, label: 'Name (SKU) - Current: X', currentQty: X }
-    const [adjustmentQuantity, setAdjustmentQuantity] = useState(''); // Can be positive or negative
+    const [selectedItem, setSelectedItem] = useState(null);
+    const [adjustmentQuantity, setAdjustmentQuantity] = useState('');
     const [reason, setReason] = useState('');
     const [notes, setNotes] = useState('');
-    const [newQuantity, setNewQuantity] = useState(null); // Calculated new quantity
+    const [newQuantity, setNewQuantity] = useState(null);
 
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [error, setError] = useState('');
     const [successMessage, setSuccessMessage] = useState('');
 
-    // Item options for the dropdown
     const [itemOptions, setItemOptions] = useState([]);
     const [isItemsLoading, setIsItemsLoading] = useState(false);
 
-    // Fetch items for the Select dropdown
     useEffect(() => {
         const loadItems = async () => {
             setIsItemsLoading(true);
             try {
-                const items = await window.electronAPI.getItems({}); // Fetch all items
+                const items = await window.electronAPI.getItems({});
                 const options = items.map(item => ({
                     value: item.id,
                     label: `${item.name} ${item.variant ? `(${item.variant})` : ''} (SKU: ${item.sku || 'N/A'}) - Current: ${item.quantity}`,
-                    currentQty: item.quantity // Store current quantity for calculation
+                    currentQty: item.quantity
                 }));
                 setItemOptions(options);
             } catch (err) {
@@ -56,7 +56,6 @@ function StockAdjustmentPage({ currentUser }) {
         loadItems();
     }, []);
 
-    // Calculate new quantity whenever item or adjustment amount changes
     useEffect(() => {
         if (selectedItem && adjustmentQuantity !== '') {
             const current = Number(selectedItem.currentQty);
@@ -64,37 +63,36 @@ function StockAdjustmentPage({ currentUser }) {
             if (!isNaN(current) && !isNaN(adjustment)) {
                 setNewQuantity(current + adjustment);
             } else {
-                setNewQuantity(null); // Reset if inputs are invalid
+                setNewQuantity(null);
             }
         } else {
-            setNewQuantity(null); // Reset if no item or adjustment amount
+            setNewQuantity(null);
         }
     }, [selectedItem, adjustmentQuantity]);
 
     const handleItemChange = (selectedOption) => {
         setSelectedItem(selectedOption);
-        setError(''); // Clear error on item change
+        setAdjustmentQuantity(''); // Also reset quantity when item changes for clarity
+        setReason(''); // Reset reason
+        setNotes(''); // Reset notes
+        setNewQuantity(null); // Reset calculated new quantity
+        setError('');
         setSuccessMessage('');
     };
 
     const handleQuantityChange = (e) => {
-        // Allow negative sign, but ensure it's a number
         const value = e.target.value;
-         // Allow empty string, minus sign, or valid number potentially starting with minus
-         if (value === '' || value === '-' || /^-?\d*\.?\d*$/.test(value)) {
+        if (value === '' || value === '-' || /^-?\d*\.?\d*$/.test(value)) {
             setAdjustmentQuantity(value);
-            setError('');
-            setSuccessMessage('');
-         }
+            // No need to clear error/success here, only on item change or submit
+        }
     };
-
 
     const handleSubmit = async (e) => {
         e.preventDefault();
         setError('');
         setSuccessMessage('');
 
-        // --- Validations ---
         if (!selectedItem) {
             setError('Please select an item to adjust.');
             return;
@@ -108,7 +106,7 @@ function StockAdjustmentPage({ currentUser }) {
             setError('Adjustment quantity cannot be zero and must be a number.');
             return;
         }
-         if (!reason) {
+        if (!reason) {
             setError('Please select a reason for the adjustment.');
             return;
         }
@@ -116,42 +114,60 @@ function StockAdjustmentPage({ currentUser }) {
             setError('Please provide details in the Notes when selecting "Other".');
             return;
         }
-        // Check if the new quantity would be negative (generally disallowed unless explicitly handled)
-        if (newQuantity !== null && newQuantity < 0) {
-            setError(`Resulting quantity (${newQuantity}) cannot be negative. Current stock is ${selectedItem.currentQty}.`);
+        // --- MODIFICATION START: Allow positive adjustments for receiving goods, even if it seems like "duplicating" found stock logic.
+        // The key difference is the *reason* and thus the *transaction_type* logged.
+        // For "Goods Received..." reasons, the adjustment quantity SHOULD typically be positive.
+        if ((reason === 'Goods Received from Factory') && adjustmentQty <= 0) {
+            setError(`For "${reason}", adjustment quantity should be positive.`);
             return;
         }
-        // --- End Validations ---
+        // --- MODIFICATION END ---
+
+        if (newQuantity !== null && newQuantity < 0) {
+             // Check for other reasons leading to negative stock
+             if (reason !== 'Damaged Goods Write-off' && reason !== 'Expired Stock Write-off' && !reason.toLowerCase().includes('deduct')) { // Add more "deduction" type reasons if any
+                setError(`Resulting quantity (${newQuantity}) cannot be negative. Current stock is ${selectedItem.currentQty}.`);
+                return;
+             }
+        }
 
 
         setIsSubmitting(true);
 
         const adjustmentDetails = {
             itemId: selectedItem.value,
-            adjustmentQuantity: adjustmentQty, // Send the numeric value
+            adjustmentQuantity: adjustmentQty,
             reason: reason,
             notes: notes.trim() || null,
-            userId: currentUser?.id, // Pass user ID for logging
-            username: currentUser?.username, // Pass username for logging
+            userId: currentUser?.id,
+            username: currentUser?.username,
         };
 
         try {
             console.log("Submitting stock adjustment:", adjustmentDetails);
-            // Ensure this function exists in preload/main.js (Step 4)
             const result = await window.electronAPI.performStockAdjustment(adjustmentDetails);
             console.log("Stock adjustment result:", result);
 
             if (result.success) {
                 setSuccessMessage(result.message || 'Stock adjusted successfully!');
-                // Reset form
-                setSelectedItem(null);
+                // Refresh item options to show updated current quantity in dropdown
+                const items = await window.electronAPI.getItems({});
+                const options = items.map(item => ({
+                    value: item.id,
+                    label: `${item.name} ${item.variant ? `(${item.variant})` : ''} (SKU: ${item.sku || 'N/A'}) - Current: ${item.quantity}`,
+                    currentQty: item.quantity
+                }));
+                setItemOptions(options);
+
+                // Reset form fields
+                setSelectedItem(null); // This will also clear dependent fields via handleItemChange if called
                 setAdjustmentQuantity('');
                 setReason('');
                 setNotes('');
                 setNewQuantity(null);
-                // Optionally refresh item list if needed, though usually not necessary on separate page
-                // Or navigate away
-                 setTimeout(() => setSuccessMessage(''), 5000);
+
+
+                setTimeout(() => setSuccessMessage(''), 7000); // Clear success after 7s
             } else {
                 setError(result.message || 'Failed to adjust stock.');
             }
@@ -166,7 +182,6 @@ function StockAdjustmentPage({ currentUser }) {
     return (
         <div className="stock-adjustment-page page-container">
             <header className="page-header-alt">
-                 {/* Reusing form header style */}
                  <div className="form-header-left">
                      <div>
                         <h1>Stock Adjustment</h1>
@@ -179,7 +194,6 @@ function StockAdjustmentPage({ currentUser }) {
             {successMessage && <div className="success-message card" role="status">{successMessage}</div>}
 
             <form onSubmit={handleSubmit} className="stock-adjustment-form card">
-                {/* Item Selection */}
                 <div className="form-group">
                     <label htmlFor="itemSelect">Select Item *</label>
                     <Select
@@ -190,7 +204,7 @@ function StockAdjustmentPage({ currentUser }) {
                         isLoading={isItemsLoading}
                         isClearable
                         placeholder="Search or select product..."
-                        styles={{ container: base => ({ ...base, zIndex: 10 }) }} // Ensure dropdown overlaps
+                        styles={{ container: base => ({ ...base, zIndex: 10 }) }}
                         required
                     />
                     {selectedItem && (
@@ -200,25 +214,23 @@ function StockAdjustmentPage({ currentUser }) {
                     )}
                 </div>
 
-                {/* Adjustment Quantity */}
                 <div className="form-group">
                     <label htmlFor="adjustmentQuantity">Adjustment Quantity *</label>
                     <input
                         id="adjustmentQuantity"
-                        type="text" // Use text to allow easier input of negative sign
+                        type="text"
                         value={adjustmentQuantity}
                         onChange={handleQuantityChange}
                         placeholder="e.g., -5 (to deduct) or 10 (to add)"
-                        className="form-control" // Add general form control class if you have one
+                        className="form-control"
                         required
-                        disabled={!selectedItem} // Disable until item is selected
+                        disabled={!selectedItem}
                     />
                      <small className="form-text text-muted">
-                        Enter a positive number to add stock, a negative number to deduct stock.
+                        Enter a positive number to add stock (e.g., for received goods), a negative number to deduct stock.
                     </small>
                 </div>
 
-                 {/* Calculated New Quantity (Read-Only) */}
                  {newQuantity !== null && (
                      <div className="form-group calculated-quantity">
                         <label>Resulting Quantity:</label>
@@ -228,8 +240,6 @@ function StockAdjustmentPage({ currentUser }) {
                      </div>
                  )}
 
-
-                 {/* Reason */}
                 <div className="form-group">
                     <label htmlFor="reason">Reason for Adjustment *</label>
                     <select
@@ -245,7 +255,6 @@ function StockAdjustmentPage({ currentUser }) {
                     </select>
                 </div>
 
-                {/* Notes */}
                 <div className="form-group">
                     <label htmlFor="notes">Notes {reason === 'Other (Specify in Notes)' ? '*' : '(Optional)'}</label>
                     <textarea
@@ -254,18 +263,17 @@ function StockAdjustmentPage({ currentUser }) {
                         onChange={(e) => setNotes(e.target.value)}
                         rows="3"
                         className="form-control"
-                        placeholder="Add any relevant details, required if reason is 'Other'..."
+                        placeholder="Add any relevant details, PO numbers, etc. Required if reason is 'Other'..."
                         disabled={!selectedItem}
                         required={reason === 'Other (Specify in Notes)'}
                     ></textarea>
                 </div>
 
-                {/* Actions */}
                 <div className="form-actions">
                     <button
                         type="submit"
-                        className="button button-primary save-button" // Reuse save button style potentially
-                        disabled={isSubmitting || !selectedItem || !reason || adjustmentQuantity === '' || newQuantity === null || newQuantity < 0}
+                        className="button button-primary save-button"
+                        disabled={isSubmitting || !selectedItem || !reason || adjustmentQuantity === '' || adjustmentQuantity === '-' || newQuantity === null || (newQuantity < 0 && reason !== 'Damaged Goods Write-off' && reason !== 'Expired Stock Write-off' && !reason.toLowerCase().includes('deduct')) }
                     >
                         <FaSave style={{ marginRight: '8px' }} />
                         {isSubmitting ? 'Processing...' : 'Submit Adjustment'}

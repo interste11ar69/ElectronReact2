@@ -47,9 +47,32 @@ if (!supabaseUrl || !supabaseAnonKey) {
   }
 }
 
-// Export the raw client if needed for direct use, though 'db' object is preferred
 export { supabase };
+// Export the raw client if needed for direct use, though 'db' object is preferred
 
+function getDateRange(period) {
+            const today = new Date();
+            let startDate, endDate;
+
+            endDate = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999); // End of today
+
+            if (period === 'today') {
+                startDate = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0, 0);
+            } else if (period === 'last7days') {
+                startDate = new Date(today);
+                startDate.setDate(today.getDate() - 6); // Include today, so go back 6 days
+                startDate.setHours(0, 0, 0, 0);
+            } else if (period === 'last30days') {
+                startDate = new Date(today);
+                startDate.setDate(today.getDate() - 29); // Include today, so go back 29 days
+                startDate.setHours(0, 0, 0, 0);
+            } else {
+                // Default to today or handle custom range if you implement it
+                startDate = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0, 0);
+                console.warn(`[getDateRange] Unknown period: ${period}, defaulting to today.`);
+            }
+            return { startDate: startDate.toISOString(), endDate: endDate.toISOString() };
+        }
 export const db = {
   // --- CUSTOM AUTHENTICATION ---
   async login(username, password) {
@@ -1775,6 +1798,131 @@ user:users (id, username)
         return { success: false, message: error.message || `Failed to ${archiveStatus ? 'archive' : 'unarchive'} item.` };
       }
     },
+    async getInventoryByStorageLocation() {
+        if (!supabase) return { success: false, message: "Database client not initialized.", data: [] };
+        try {
+            const { data, error } = await supabase.rpc('get_inventory_summary_by_storage');
+
+            if (error) {
+                console.error('[db.getInventoryByStorageLocation] RPC error:', error);
+                // Instead of throwing, return a structured error for main.js to handle
+                return { success: false, message: error.message || 'RPC error fetching storage summary.', data: [] };
+            }
+            // Ensure the data structure here matches what AnalyticsPage expects for storageRes.data
+            // The RPC get_inventory_summary_by_storage should return [{ storage_location: 'X', total_quantity: N, ... }, ...]
+            return { success: true, data: data || [] };
+        } catch (error) { // Catch unexpected errors during the supabase.rpc call
+            console.error('[db.getInventoryByStorageLocation] General error:', error);
+            return { success: false, message: error.message || "Failed to get storage breakdown.", data: [] };
+        }
+    },
+
+      // --- NEW ANALYTICS DB FUNCTIONS ---
+
+      async getSalesSummary(period = 'last30days') {
+        if (!supabase) return { success: false, message: "DB client not init.", summary: null };
+        try {
+          const { startDate, endDate } = getDateRange(period);
+
+          // Fetch fulfilled orders within the period
+          const { data, error } = await supabase
+            .from('sales_orders')
+            .select('total_amount')
+            .eq('status', 'Fulfilled')
+            .gte('order_date', startDate) // Assuming order_date reflects the sale date
+            .lte('order_date', endDate);
+
+          if (error) throw error;
+
+          const numberOfOrders = data ? data.length : 0;
+          const totalSalesValue = (data || []).reduce((sum, order) => sum + (Number(order.total_amount) || 0), 0);
+          const averageOrderValue = numberOfOrders > 0 ? totalSalesValue / numberOfOrders : 0;
+
+          return {
+            success: true,
+            summary: {
+              totalSalesValue,
+              numberOfOrders,
+              averageOrderValue,
+            },
+          };
+        } catch (error) {
+          console.error('[db.getSalesSummary] Error:', error);
+          return { success: false, message: error.message, summary: null };
+        }
+      },
+
+      async getTopSellingItems(period = 'last30days', limit = 5) {
+        if (!supabase) return { success: false, message: "DB client not init.", items: [] };
+        try {
+          const { startDate, endDate } = getDateRange(period);
+
+          // This query is a bit more complex as it needs to sum quantities from sales_order_items
+          // and join with items/bundles. An RPC would be more efficient.
+          // Simplified version: Sum quantities and values from sales_order_items.
+          // You'll need to enhance this to get item/bundle names.
+
+          // Fetch fulfilled sales order IDs within the period
+          const { data: fulfilledOrders, error: orderError } = await supabase
+            .from('sales_orders')
+            .select('id')
+            .eq('status', 'Fulfilled')
+            .gte('order_date', startDate)
+            .lte('order_date', endDate);
+
+          if (orderError) throw orderError;
+          if (!fulfilledOrders || fulfilledOrders.length === 0) {
+            return { success: true, items: [] }; // No fulfilled orders, so no top items
+          }
+
+          const fulfilledOrderIds = fulfilledOrders.map(o => o.id);
+
+
+
+          const { data: topItems, error: rpcError } = await supabase.rpc('get_top_selling_products_rpc', {
+            start_date_param: startDate,
+            end_date_param: endDate,
+            result_limit: limit
+          });
+
+          if (rpcError) {
+            console.error('[db.getTopSellingItems] RPC Error:', rpcError);
+            throw rpcError;
+          }
+
+          return { success: true, items: topItems || [] };
+
+        } catch (error) {
+          console.error('[db.getTopSellingItems] Error:', error);
+          return { success: false, message: error.message, items: [] };
+        }
+      },
+
+      async getSalesByStatus(period = 'last30days') {
+        if (!supabase) return { success: false, message: "DB client not init.", data: [] };
+        try {
+          const { startDate, endDate } = getDateRange(period);
+
+          const { data, error } = await supabase.rpc('get_sales_summary_by_status_rpc', {
+              start_date_param: startDate,
+              end_date_param: endDate
+          });
+
+
+          if (error) {
+            console.error('[db.getSalesByStatus] RPC Error:', error);
+            throw error;
+          }
+          // The RPC directly returns data in [{status: 'X', count: N}, ...] format
+          return { success: true, data: data || [] };
+
+        } catch (error) {
+          console.error('[db.getSalesByStatus] Error:', error);
+          return { success: false, message: error.message, data: [] };
+        }
+       }
+
+
   // ... (rest of your db object)
 
   // --- END SALES ORDER FUNCTIONS ---

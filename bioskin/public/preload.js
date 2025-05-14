@@ -207,7 +207,19 @@ contextBridge.exposeInMainWorld(
       unarchiveItem: (itemId) => {
           console.log('[Preload] Invoking "unarchive-item" for ID:', itemId);
           return ipcRenderer.invoke('unarchive-item', itemId);
-      }
+      },
+      getSalesSummary: (period) => {
+          console.log('[Preload] Invoking "get-sales-summary" with period:', period);
+          return ipcRenderer.invoke('get-sales-summary', period);
+        },
+        getTopSellingItems: (period, limit) => {
+          console.log('[Preload] Invoking "get-top-selling-items" with period:', period, 'limit:', limit);
+          return ipcRenderer.invoke('get-top-selling-items', { period, limit }); // Send as an object
+        },
+        getSalesByStatus: (period) => {
+          console.log('[Preload] Invoking "get-sales-by-status" with period:', period);
+          return ipcRenderer.invoke('get-sales-by-status', period);
+        },
     // --- MODIFICATION END ---
     // No comma after the last property in the object
   } // <--- This is the CORRECT closing brace for the 'electronAPI' object

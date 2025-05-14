@@ -585,6 +585,36 @@ app.whenReady().then(() => {
             return { success: false, products: [], message: error.message };
         }
     });
+    ipcMain.handle('get-sales-summary', async (event, period) => {
+        console.log(`[main.js] IPC get-sales-summary for period: ${period}`);
+        try {
+            return await db.getSalesSummary(period);
+        } catch (error) {
+            console.error('[main.js] Error in get-sales-summary:', error);
+            // Log activity for errors might be too noisy for analytics calls
+            return { success: false, summary: null, message: error.message };
+        }
+    });
+
+    ipcMain.handle('get-top-selling-items', async (event, { period, limit }) => {
+        console.log(`[main.js] IPC get-top-selling-items for period: ${period}, limit: ${limit}`);
+        try {
+            return await db.getTopSellingItems(period, limit);
+        } catch (error) {
+            console.error('[main.js] Error in get-top-selling-items:', error);
+            return { success: false, items: [], message: error.message };
+        }
+    });
+
+    ipcMain.handle('get-sales-by-status', async (event, period) => {
+        console.log(`[main.js] IPC get-sales-by-status for period: ${period}`);
+        try {
+            return await db.getSalesByStatus(period);
+        } catch (error) {
+            console.error('[main.js] Error in get-sales-by-status:', error);
+            return { success: false, data: [], message: error.message };
+        }
+    });
 
     // --- File Processing ---
     ipcMain.handle('import-initial-items', async (event, { fileData }) => {

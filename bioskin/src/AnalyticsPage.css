@@ -1,0 +1,222 @@
+/* src/AnalyticsPage.css */
+
+.analytics-page .page-container {
+    /* If your global .page-container already has padding, you might not need this.
+       Otherwise, add some padding for the overall page content. */
+    /* Example: padding: 2rem; */
+}
+
+.analytics-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid var(--color-border-soft, #e0e0e0);
+  padding-bottom: 1rem;
+  margin-bottom: 2rem;
+}
+
+.analytics-title {
+  margin: 0;
+  font-size: 1.8em;
+  font-weight: 700;
+  color: var(--color-text-dark);
+  flex-grow: 1; /* Allows title to take up available space */
+}
+
+.sales-period-filter {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0; /* Prevents this group from shrinking too much */
+}
+
+.sales-period-filter label {
+  margin-right: 0.75rem;
+  font-weight: 500;
+  color: var(--color-text-medium);
+  white-space: nowrap; /* Keeps "Sales Period:" on one line */
+}
+
+.sales-period-filter select {
+  padding: 0.6rem 0.8rem;
+  border-radius: var(--border-radius);
+  border: 1px solid var(--color-border-strong);
+  background-color: var(--color-surface);
+  min-width: 160px;
+  font-size: 0.9em;
+  color: var(--color-text-dark);
+}
+
+.analytics-section {
+  background-color: var(--color-surface, #fff);
+  border: 1px solid var(--color-border-soft, #eee);
+  border-radius: var(--border-radius-rounded, 8px);
+  padding: 1.5rem 2rem;
+  margin-bottom: 2rem;
+  box-shadow: var(--box-shadow, 0 1px 3px rgba(0,0,0,0.1));
+}
+
+.analytics-section h2 {
+  font-size: 1.4em;
+  color: var(--color-text-dark);
+  margin-top: 0;
+  margin-bottom: 1.5rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--color-border-soft);
+  font-weight: 600; /* Ensure section titles are bold */
+}
+
+.summary-list {
+  list-style: none;
+  padding: 0;
+  margin: 0; /* Remove default ul margin */
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1.5rem;
+}
+
+.summary-list li {
+  background-color: var(--color-surface-alt, #f8f9fa);
+  padding: 1.25rem 1.5rem;
+  border-radius: var(--border-radius, 6px);
+  border: 1px solid var(--color-border-extra-soft, #f1f3f5);
+}
+
+.summary-list li strong {
+  display: block;
+  color: var(--color-text-medium);
+  margin-bottom: 0.6rem;
+  font-size: 0.9em;
+  font-weight: 500;
+}
+
+.summary-list li span {
+  font-size: 1.8em;
+  font-weight: 700;
+  color: var(--color-primary-dark, #333);
+  display: block;
+}
+
+.charts-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 400px), 1fr)); /* Min 400px, or 100% if container is smaller */
+  gap: 2rem;
+  margin-bottom: 2rem;
+}
+
+.chart-card {
+  background-color: var(--color-surface, #fff);
+  border: 1px solid var(--color-border-soft, #eee);
+  border-radius: var(--border-radius-rounded, 8px);
+  padding: 1.5rem;
+  box-shadow: var(--box-shadow, 0 1px 3px rgba(0,0,0,0.1));
+  display: flex;
+  flex-direction: column; /* Stack title and chart wrapper */
+}
+
+.chart-card h3 {
+  font-size: 1.15em;
+  color: var(--color-text-dark);
+  margin-top: 0;
+  margin-bottom: 1.5rem;
+  text-align: center;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--color-border-soft);
+  font-weight: 600;
+}
+
+.chart-wrapper {
+  position: relative; /* For chart.js canvas */
+  flex-grow: 1;    /* Allows chart to fill available space in card */
+  min-height: 300px; /* Ensure charts have some base height */
+}
+
+/* Specific height for the horizontal bar chart (Top Selling Items) */
+.top-items-chart-wrapper {
+  /* Height will be set dynamically in JS, but you can set a min-height here if desired */
+  min-height: 300px;
+}
+
+.low-stock-section {
+  /* Uses .analytics-section styles */
+}
+
+.low-stock-section h2 { /* Overriding .analytics-section h2 for consistency if needed */
+  font-size: 1.4em;
+  color: var(--color-text-dark);
+  margin-top: 0;
+  margin-bottom: 1.5rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--color-border-soft);
+  font-weight: 600;
+}
+
+
+.low-stock-list-container {
+  max-height: 400px;
+  overflow-y: auto;
+  padding: 0.5rem; /* Inner padding for scrollable area */
+  border: 1px solid var(--color-border-extra-soft, #f1f3f5);
+  border-radius: var(--border-radius, 6px);
+  background-color: var(--color-surface-alt, #f9f9f9); /* Slight background for the list area */
+}
+
+.low-stock-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.low-stock-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.85rem 1rem; /* Slightly more padding */
+  border-bottom: 1px solid var(--color-border-soft, #eee);
+  font-size: 0.95em;
+}
+
+.low-stock-list li:last-child {
+  border-bottom: none;
+}
+
+.low-stock-list .item-name {
+  color: var(--color-text-dark);
+  flex-grow: 1;
+  margin-right: 1rem;
+  word-break: break-word; /* Handle long item names */
+}
+
+.low-stock-list .item-quantity {
+  font-weight: 700; /* Bolder quantity */
+  color: var(--color-status-danger);
+  background-color: rgba(220, 53, 69, 0.08); /* Softer background */
+  padding: 0.3rem 0.6rem;
+  border-radius: var(--border-radius);
+  white-space: nowrap; /* Keep "X units" on one line */
+  font-size: 0.9em;
+}
+
+.no-data-message {
+  text-align: center;
+  padding: 3rem 1rem;
+  color: var(--color-text-light);
+  font-style: italic;
+  flex-grow: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 150px;
+}
+
+.analytics-loading,
+.analytics-error.card { /* Apply card styles to error message if it has .card class */
+  text-align: center;
+  padding: 3rem 1rem;
+  font-size: 1.1em;
+  /* .card class from index.css will provide background, border, etc. */
+}
+
+.analytics-error.card { /* Specific text color for error if using .card */
+  color: var(--color-status-danger);
+  /* Background and border can come from .card and an inline style or specific error card class */
+}

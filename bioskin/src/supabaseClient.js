@@ -1802,16 +1802,12 @@ user:users (id, username)
         if (!supabase) return { success: false, message: "Database client not initialized.", data: [] };
         try {
             const { data, error } = await supabase.rpc('get_inventory_summary_by_storage');
-
             if (error) {
                 console.error('[db.getInventoryByStorageLocation] RPC error:', error);
-                // Instead of throwing, return a structured error for main.js to handle
                 return { success: false, message: error.message || 'RPC error fetching storage summary.', data: [] };
             }
-            // Ensure the data structure here matches what AnalyticsPage expects for storageRes.data
-            // The RPC get_inventory_summary_by_storage should return [{ storage_location: 'X', total_quantity: N, ... }, ...]
             return { success: true, data: data || [] };
-        } catch (error) { // Catch unexpected errors during the supabase.rpc call
+        } catch (error) {
             console.error('[db.getInventoryByStorageLocation] General error:', error);
             return { success: false, message: error.message || "Failed to get storage breakdown.", data: [] };
         }

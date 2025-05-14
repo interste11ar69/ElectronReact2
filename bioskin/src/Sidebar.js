@@ -49,7 +49,6 @@ function Sidebar({ onLogout, currentUser }) {
           { path: '/data-management', label: 'Data Management', icon: <FaDatabase />, adminOnly: true },
           { path: '/stock-adjustment', label: 'Stock Adjustments', icon: <FaSlidersH />, adminOnly: true },
           { path: '/bundles', label: 'Bundles/Kits', icon: <FaBoxes />, adminOnly: true },
-          { path: '/inventory-movements', label: 'Stock Ledger', icon: <FaListAlt />, adminOnly: true },
           { path: '/stock-transfer', label: 'Stock Transfer', icon: <FaExchangeAlt />, adminOnly: true },
       ];
 

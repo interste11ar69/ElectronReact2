@@ -207,7 +207,6 @@
                     <h1 className="welcome-title">WELCOME {currentUser?.username?.toUpperCase() || 'USER'}!</h1>
                     <p className="welcome-subtitle">BIOSKIN INVENTORY</p>
                 </div>
-                <div className="top-bar-icons"><FaBell /><FaUserCircle /></div>
               </header>
 
               <div className="stat-cards-grid">

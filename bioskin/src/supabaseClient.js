@@ -408,64 +408,72 @@ export const db = {
   },
 
   // NEW: Get inventory breakdown by storage location
-  async getInventoryByStorageLocation() {
-    if (!supabase)
-      return {
-        success: false,
-        message: "Database client not initialized.",
-        data: [],
-      };
-    try {
-      // Create RPC: get_inventory_summary_by_storage (See Step 1.1 below)
-      const { data, error } = await supabase.rpc(
-        "get_inventory_summary_by_storage"
-      );
-
-      if (error) {
-        console.error("[db.getInventoryByStorageLocation] RPC error:", error);
-        throw error;
-      }
-      return { success: true, data: data || [] };
-    } catch (error) {
-      console.error("[db.getInventoryByStorageLocation] Error:", error);
-      return {
-        success: false,
-        message: error.message || "Failed to get storage breakdown.",
-        data: [],
-      };
-    }
-  },
-
-  // Placeholder for sales-related analytics (requires sales data)
   async getTodaysSalesTotal() {
-    // In a real app, query a 'sales' or 'orders' table for today's date
-    if (!supabase)
-      return {
-        success: false,
-        message: "Database client not initialized.",
-        total: 0,
-      };
-    console.warn(
-      "[db.getTodaysSalesTotal] This is a placeholder. Sales data table needed."
-    );
-    // Simulate for now
-    return { success: true, total: Math.floor(Math.random() * 20000) + 5000 }; // Random sales
-  },
+      if (!supabase) return { success: false, message: "Database client not initialized.", total: 0 };
+      try {
+        const today = new Date();
+        const startDate = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0, 0).toISOString();
+        const endDate = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999).toISOString();
 
-  async getNewOrdersCount() {
-    // In a real app, query 'sales' or 'orders' for new/unprocessed orders
-    if (!supabase)
-      return {
-        success: false,
-        message: "Database client not initialized.",
-        count: 0,
-      };
-    console.warn(
-      "[db.getNewOrdersCount] This is a placeholder. Orders/Sales data table needed."
-    );
-    // Simulate for now
-    return { success: true, count: Math.floor(Math.random() * 30) }; // Random count
-  },
+        console.log(`[db.getTodaysSalesTotal] Fetching sales from ${startDate} to ${endDate}`);
+
+        // We sum 'total_amount' from 'sales_orders' table where status is 'Fulfilled' and order_date is today.
+        // If you also want to include other statuses like 'Awaiting Payment' if that counts as a "sale" for this metric, adjust the filter.
+        const { data, error } = await supabase
+          .from('sales_orders')
+          .select('total_amount')
+          .eq('status', 'Fulfilled') // Only count fulfilled orders as completed sales for total value
+          .gte('order_date', startDate) // order_date greater than or equal to start of today
+          .lte('order_date', endDate);  // order_date less than or equal to end of today
+
+        if (error) {
+          console.error('[db.getTodaysSalesTotal] Supabase error:', error);
+          throw error;
+        }
+
+        const totalSalesValue = (data || []).reduce((sum, order) => sum + (Number(order.total_amount) || 0), 0);
+        console.log(`[db.getTodaysSalesTotal] Calculated total: ${totalSalesValue}`);
+        return { success: true, total: totalSalesValue };
+
+      } catch (error) {
+        console.error('[db.getTodaysSalesTotal] Error:', error);
+        return { success: false, message: error.message || "Failed to get today's sales total.", total: 0 };
+      }
+    },
+
+    // --- REVISED: Get New Orders Count for Today ---
+    async getNewOrdersCount() {
+      if (!supabase) return { success: false, message: "Database client not initialized.", count: 0 };
+      try {
+        const today = new Date();
+        const startDate = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0, 0).toISOString();
+        const endDate = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999).toISOString();
+
+        console.log(`[db.getNewOrdersCount] Fetching new orders from ${startDate} to ${endDate}`);
+
+        // Counts orders created today, regardless of status, or you can filter by status like 'Pending', 'Confirmed'
+        // For "New Orders", 'Pending' or 'Confirmed' often makes sense.
+        const { count, error } = await supabase
+          .from('sales_orders')
+          .select('*', { count: 'exact', head: true }) // We just need the count
+          .gte('created_at', startDate) // Use created_at for when the order record was actually made
+          .lte('created_at', endDate)
+          // Optionally filter by status if "new" means specific statuses:
+          // .in('status', ['Pending', 'Confirmed', 'Awaiting Payment'])
+
+        if (error) {
+          console.error('[db.getNewOrdersCount] Supabase error:', error);
+          throw error;
+        }
+
+        console.log(`[db.getNewOrdersCount] Count: ${count}`);
+        return { success: true, count: count || 0 };
+
+      } catch (error) {
+        console.error('[db.getNewOrdersCount] Error:', error);
+        return { success: false, message: error.message || "Failed to get new orders count.", count: 0 };
+      }
+    },
 
   async getTopSellingProductsByQuantity(limit = 5, dateRange = null) {
     // Requires a 'sales_items' table or similar, joining with 'items'

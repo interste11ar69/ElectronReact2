@@ -557,9 +557,8 @@ app.whenReady().then(() => {
         }
     });
 
-    // Handlers for the new dashboard stats (using placeholders from db client for now)
     ipcMain.handle('get-todays-sales-total', async () => {
-        console.log('[main.js] IPC get-todays-sales-total');
+        console.log('[main.js] IPC get-todays-sales-total'); // Now calling the real function
         try {
             return await db.getTodaysSalesTotal();
         } catch (error) {
@@ -568,7 +567,7 @@ app.whenReady().then(() => {
         }
     });
     ipcMain.handle('get-new-orders-count', async () => {
-        console.log('[main.js] IPC get-new-orders-count');
+        console.log('[main.js] IPC get-new-orders-count'); // Now calling the real function
         try {
             return await db.getNewOrdersCount();
         } catch (error) {
@@ -576,6 +575,7 @@ app.whenReady().then(() => {
             return { success: false, count: 0, message: error.message };
         }
     });
+
     ipcMain.handle('get-top-selling-proxy', async () => { // Proxy for top selling
         console.log('[main.js] IPC get-top-selling-proxy');
         try {

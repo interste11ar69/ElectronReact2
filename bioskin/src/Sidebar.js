@@ -41,6 +41,7 @@ function Sidebar({ onLogout, currentUser }) {
           { path: '/sales-orders', label: 'Sales Orders', icon: <FaFileInvoiceDollar /> },
         //   { path: '/sales-orders/new', label: 'New Sales Order', icon: <FaCartPlus /> }, // Optional direct link
           { path: '/returns/process', label: 'Process Return', icon: <FaUndo /> },
+          { path: '/inventory-movements', label: 'Stock Ledger', icon: <FaListAlt /> },
       ];
 
       const adminToolsLinks = [

@@ -32,11 +32,14 @@
     #inventoryMovementTable .text-success { color: var(--color-status-success); font-weight: bold; }
 
     #inventoryMovementTable .notes-cell {
-        max-width: 250px; /* Limit width of notes */
-        white-space: pre-wrap; /* Allow wrapping */
-        word-break: break-word;
+        min-width: 200px;   /* Suggest a minimum width for the notes column */
+        max-width: 350px;   /* Suggest a maximum width before it gets too wide */
+        white-space: normal; /* IMPORTANT: Allow text to wrap to the next line */
+        word-wrap: break-word; /* Break long words if they would overflow (less common for notes) */
+        overflow-wrap: break-word; /* Preferred modern property for word breaking */
         font-size: 0.85em;
         color: var(--color-text-medium);
+        line-height: 1.4;   /* Slightly increase line height for readability of wrapped text */
     }
 
     .pagination-controls button {

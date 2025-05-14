@@ -98,6 +98,8 @@ function AppRouter() {
                     <Route path="/sales-orders" element={<SalesOrderListPage currentUser={currentUser} />} />
                     <Route path="/sales-orders/new" element={<SalesOrderFormPage currentUser={currentUser} />} />
                     <Route path="/sales-orders/:id" element={<SalesOrderFormPage currentUser={currentUser} />} />
+                    <Route path="/inventory-movements" element={<InventoryMovementPage currentUser={currentUser} />} />
+
 
                     {/* Admin Only Routes: */}
                     {currentUser?.role === 'admin' && (
@@ -110,7 +112,6 @@ function AppRouter() {
                             <Route path="/bundles" element={<BundleListPage currentUser={currentUser} />} />
                             <Route path="/bundles/new" element={<BundleFormPage currentUser={currentUser} />} />
                             <Route path="/bundles/:id/edit" element={<BundleFormPage currentUser={currentUser} />} />
-                            <Route path="/inventory-movements" element={<InventoryMovementPage currentUser={currentUser} />} />
                             <Route path="/stock-transfer" element={<StockTransferPage currentUser={currentUser} />} />
                         </>
                     )}

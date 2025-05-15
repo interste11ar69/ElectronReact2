@@ -1,5 +1,6 @@
 /* src/AnalyticsPage.css */
 
+/* --- General Page Structure --- */
 .analytics-page .page-container {
     /* If your global .page-container already has padding, you might not need this.
        Otherwise, add some padding for the overall page content. */
@@ -23,6 +24,7 @@
   flex-grow: 1; /* Allows title to take up available space */
 }
 
+/* --- Sales Period Filter (Top Right) --- */
 .sales-period-filter {
   display: flex;
   align-items: center;
@@ -46,6 +48,7 @@
   color: var(--color-text-dark);
 }
 
+/* --- Section Styling (Cards) --- */
 .analytics-section {
   background-color: var(--color-surface, #fff);
   border: 1px solid var(--color-border-soft, #eee);
@@ -65,6 +68,7 @@
   font-weight: 600; /* Ensure section titles are bold */
 }
 
+/* --- Summary KPIs List --- */
 .summary-list {
   list-style: none;
   padding: 0;
@@ -92,10 +96,11 @@
 .summary-list li span {
   font-size: 1.8em;
   font-weight: 700;
-  color: var(--color-primary-dark, #333);
+  color: var(--color-primary-dark, #333); /* Ensure this uses your theme's primary dark */
   display: block;
 }
 
+/* --- Charts --- */
 .charts-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 400px), 1fr)); /* Min 400px, or 100% if container is smaller */
@@ -113,7 +118,7 @@
   flex-direction: column; /* Stack title and chart wrapper */
 }
 
-.chart-card h3 {
+.chart-card h3 { /* Titles inside chart cards */
   font-size: 1.15em;
   color: var(--color-text-dark);
   margin-top: 0;
@@ -130,26 +135,16 @@
   min-height: 300px; /* Ensure charts have some base height */
 }
 
-/* Specific height for the horizontal bar chart (Top Selling Items) */
-.top-items-chart-wrapper {
-  /* Height will be set dynamically in JS, but you can set a min-height here if desired */
-  min-height: 300px;
+.top-items-chart-wrapper { /* Specific for Top Selling Items bar chart */
+  min-height: 300px; /* Base height, JS might override for dynamic height */
 }
 
+/* --- Low Stock Items List Section --- */
 .low-stock-section {
-  /* Uses .analytics-section styles */
+  /* Uses .analytics-section styles by default if class is applied */
 }
 
-.low-stock-section h2 { /* Overriding .analytics-section h2 for consistency if needed */
-  font-size: 1.4em;
-  color: var(--color-text-dark);
-  margin-top: 0;
-  margin-bottom: 1.5rem;
-  padding-bottom: 0.75rem;
-  border-bottom: 1px solid var(--color-border-soft);
-  font-weight: 600;
-}
-
+/* .low-stock-section h2: Already covered by .analytics-section h2 */
 
 .low-stock-list-container {
   max-height: 400px;
@@ -157,7 +152,7 @@
   padding: 0.5rem; /* Inner padding for scrollable area */
   border: 1px solid var(--color-border-extra-soft, #f1f3f5);
   border-radius: var(--border-radius, 6px);
-  background-color: var(--color-surface-alt, #f9f9f9); /* Slight background for the list area */
+  background-color: var(--color-surface-alt, #f9f9f9);
 }
 
 .low-stock-list {
@@ -170,7 +165,7 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 0.85rem 1rem; /* Slightly more padding */
+  padding: 0.85rem 1rem;
   border-bottom: 1px solid var(--color-border-soft, #eee);
   font-size: 0.95em;
 }
@@ -183,40 +178,164 @@
   color: var(--color-text-dark);
   flex-grow: 1;
   margin-right: 1rem;
-  word-break: break-word; /* Handle long item names */
+  word-break: break-word;
 }
 
 .low-stock-list .item-quantity {
-  font-weight: 700; /* Bolder quantity */
+  font-weight: 700;
   color: var(--color-status-danger);
-  background-color: rgba(220, 53, 69, 0.08); /* Softer background */
+  background-color: rgba(220, 53, 69, 0.08);
   padding: 0.3rem 0.6rem;
   border-radius: var(--border-radius);
-  white-space: nowrap; /* Keep "X units" on one line */
+  white-space: nowrap;
   font-size: 0.9em;
 }
 
-.no-data-message {
+/* --- Filter Bar for Detailed Reports --- */
+.analytics-page .filters-bar {
+  display: flex;
+  gap: 1rem; /* Space between filter elements */
+  margin-bottom: 1.5rem;
+  align-items: center; /* Vertically align items */
+  flex-wrap: wrap; /* Allow filters to wrap on smaller screens */
+}
+
+.analytics-page .filters-bar .react-select-container { /* Target react-select wrapper */
+  flex: 1; /* Allow select boxes to grow */
+  min-width: 200px; /* Minimum width for select boxes */
+  /* z-index needs to be managed in JS styles prop for react-select if they overlap */
+}
+
+.analytics-page .filters-bar label { /* For checkbox labels within the filter bar */
+  margin-bottom: 0; /* Align with select boxes */
+  display: flex;
+  align-items: center;
+  font-size: 0.9em;
+  color: var(--color-text-medium);
+  white-space: nowrap; /* Prevent label text from wrapping */
+}
+
+.analytics-page .filters-bar input[type="checkbox"] {
+  width: auto; /* Override global styles if input[type=checkbox] is set to width: 100% */
+  margin-right: 0.5rem; /* Space between checkbox and its label text */
+  /* Consider custom styling for checkbox appearance if needed */
+  height: 16px;
+  width: 16px;
+  vertical-align: middle; /* Better alignment with text */
+}
+
+
+/* --- Table Styling for Detailed Reports --- */
+.analytics-page .table-container {
+  max-height: 500px; /* Or your desired height for scrollable tables */
+  overflow-y: auto;
+  border: 1px solid var(--color-border-soft, #eee); /* Consistent border */
+  border-radius: var(--border-radius, 6px); /* Consistent radius */
+  margin-top: 1rem; /* Space above the table if it follows filters directly */
+}
+
+.analytics-page .table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.analytics-page .table th,
+.analytics-page .table td {
+  border-bottom: 1px solid var(--color-border-extra-soft, #f1f3f5); /* Softer internal borders */
+  padding: 0.75rem 0.9rem; /* Adjust padding for readability */
+  text-align: left;
+  font-size: 0.9em; /* Consistent font size for table data */
+  vertical-align: middle;
+}
+/* Optional: Remove border from last cell in a row if desired
+.analytics-page .table td:last-child,
+.analytics-page .table th:last-child {
+    border-right: none;
+}
+*/
+
+.analytics-page .table thead th {
+  background-color: var(--color-surface-alt, #f8f9fa); /* Light background for headers */
+  font-weight: 600;
+  color: var(--color-text-dark);
+  position: sticky; /* Make table headers sticky within the scrollable .table-container */
+  top: 0;
+  z-index: 10; /* Ensure headers stay above scrolling content and other elements like react-select dropdowns */
+  border-bottom-width: 2px; /* Stronger bottom border for header */
+  border-bottom-color: var(--color-border-strong, #ccc);
+}
+
+.analytics-page .table tbody tr:hover {
+  background-color: var(--color-table-row-hover, #f1f3f5); /* Use your theme's hover color */
+}
+
+.analytics-page .table .text-right { /* Utility class for text alignment */
+  text-align: right !important;
+}
+
+/* --- Small Export Buttons --- */
+.analytics-page .button-small {
+    padding: 0.4rem 0.8rem;
+    font-size: 0.85em;
+    line-height: 1.4; /* Ensure text is vertically centered */
+    margin-left: 0.5rem; /* Space between buttons if they are next to each other */
+}
+.analytics-page .button-small:disabled { /* Style for disabled export buttons */
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+
+/* --- General Messages & Loaders --- */
+.no-data-message { /* This is your existing style, ensure it's well-placed */
   text-align: center;
   padding: 3rem 1rem;
   color: var(--color-text-light);
   font-style: italic;
-  flex-grow: 1;
+  flex-grow: 1; /* If inside a flex container */
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 150px;
+  min-height: 150px; /* Give it some space */
 }
 
 .analytics-loading,
-.analytics-error.card { /* Apply card styles to error message if it has .card class */
+.analytics-error.card {
   text-align: center;
   padding: 3rem 1rem;
   font-size: 1.1em;
   /* .card class from index.css will provide background, border, etc. */
 }
 
-.analytics-error.card { /* Specific text color for error if using .card */
+.analytics-error.card {
   color: var(--color-status-danger);
-  /* Background and border can come from .card and an inline style or specific error card class */
+  /* border-color: var(--color-status-danger) !important; */ /* Optional: make border red too */
+}
+
+/* --- Notification Styling (New) --- */
+.analytics-page .notification {
+    padding: 1rem;
+    margin-bottom: 1.5rem;
+    border-radius: var(--border-radius);
+    color: white; /* Default text color for notifications, can be overridden */
+    font-weight: 500;
+    border-left-width: 5px;
+    border-left-style: solid;
+}
+.analytics-page .notification-success {
+    background-color: var(--color-status-success, #4CAF50);
+    border-left-color: #388E3C; /* Darker shade of success */
+}
+.analytics-page .notification-error {
+    background-color: var(--color-status-danger, #F44336);
+    border-left-color: #D32F2F; /* Darker shade of danger */
+}
+.analytics-page .notification-warn {
+    background-color: var(--color-status-warning, #FF9800);
+    color: var(--color-text-dark); /* Warning often has dark text for readability */
+    border-left-color: #F57C00; /* Darker shade of warning */
+}
+.analytics-page .notification-info {
+    background-color: var(--color-accent-secondary, #2196F3); /* Using accent-secondary for info */
+    border-left-color: #1976D2; /* Darker shade of info */
 }

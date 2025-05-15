@@ -315,26 +315,29 @@ function BundleListPage({ currentUser }) {
                                         </td>
                                         <td>{bundle.is_active ? 'Active' : 'Inactive'}</td>
                                         {currentUser?.role === 'admin' && (
-                                            <td className="text-center table-actions">
-                                                <button
-                                                    title="Edit Bundle" className="button-edit"
-                                                    onClick={() => navigateToEdit(bundle.id)} >
-                                                    <FaEdit /> Edit
-                                                </button>
-                                                <button
-                                                    title="Delete Bundle" className="button-delete"
-                                                    onClick={() => handleDeleteBundle(bundle.id, bundle.name)} >
-                                                    <FaTrash /> Delete
-                                                </button>
-                                                <button
-                                                    title="Record Bundle Sale (from STORE)"
-                                                    className="button-action record-sale-btn"
-                                                    onClick={() => handleOpenSaleModal(bundle)}
-                                                    disabled={bundle.maxBuildable <= 0 || processingSale || !storeLocationId}
-                                                >
-                                                    <FaShoppingCart /> Sell
-                                                </button>
-                                            </td>
+                                            <td className="table-actions"> {/* Removed text-center if you want left alignment from the group */}
+                                                    {/* <<< WRAP BUTTONS IN THIS DIV >>> */}
+                                                    <div className="actions-button-group">
+                                                        <button
+                                                            title="Edit Bundle" className="button-edit"
+                                                            onClick={() => navigateToEdit(bundle.id)} >
+                                                            <FaEdit /> Edit
+                                                        </button>
+                                                        <button
+                                                            title="Delete Bundle" className="button-delete"
+                                                            onClick={() => handleDeleteBundle(bundle.id, bundle.name)} >
+                                                            <FaTrash /> Delete
+                                                        </button>
+                                                        <button
+                                                            title="Record Bundle Sale (from STORE)"
+                                                            className="button-action record-sale-btn"
+                                                            onClick={() => handleOpenSaleModal(bundle)}
+                                                            disabled={bundle.maxBuildable <= 0 || processingSale || !storeLocationId}
+                                                        >
+                                                            <FaShoppingCart /> Sell
+                                                        </button>
+                                                    </div>
+                                                </td>
                                         )}
                                     </tr>
                                 ))}

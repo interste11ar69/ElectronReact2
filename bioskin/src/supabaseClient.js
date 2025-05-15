@@ -51,28 +51,54 @@ export { supabase };
 // Export the raw client if needed for direct use, though 'db' object is preferred
 
 function getDateRange(period) {
-            const today = new Date();
-            let startDate, endDate;
+  const today = new Date();
+  let startDate, endDate;
 
-            endDate = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999); // End of today
+  endDate = new Date(
+    today.getFullYear(),
+    today.getMonth(),
+    today.getDate(),
+    23,
+    59,
+    59,
+    999
+  ); // End of today
 
-            if (period === 'today') {
-                startDate = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0, 0);
-            } else if (period === 'last7days') {
-                startDate = new Date(today);
-                startDate.setDate(today.getDate() - 6); // Include today, so go back 6 days
-                startDate.setHours(0, 0, 0, 0);
-            } else if (period === 'last30days') {
-                startDate = new Date(today);
-                startDate.setDate(today.getDate() - 29); // Include today, so go back 29 days
-                startDate.setHours(0, 0, 0, 0);
-            } else {
-                // Default to today or handle custom range if you implement it
-                startDate = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0, 0);
-                console.warn(`[getDateRange] Unknown period: ${period}, defaulting to today.`);
-            }
-            return { startDate: startDate.toISOString(), endDate: endDate.toISOString() };
-        }
+  if (period === "today") {
+    startDate = new Date(
+      today.getFullYear(),
+      today.getMonth(),
+      today.getDate(),
+      0,
+      0,
+      0,
+      0
+    );
+  } else if (period === "last7days") {
+    startDate = new Date(today);
+    startDate.setDate(today.getDate() - 6); // Include today, so go back 6 days
+    startDate.setHours(0, 0, 0, 0);
+  } else if (period === "last30days") {
+    startDate = new Date(today);
+    startDate.setDate(today.getDate() - 29); // Include today, so go back 29 days
+    startDate.setHours(0, 0, 0, 0);
+  } else {
+    // Default to today or handle custom range if you implement it
+    startDate = new Date(
+      today.getFullYear(),
+      today.getMonth(),
+      today.getDate(),
+      0,
+      0,
+      0,
+      0
+    );
+    console.warn(
+      `[getDateRange] Unknown period: ${period}, defaulting to today.`
+    );
+  }
+  return { startDate: startDate.toISOString(), endDate: endDate.toISOString() };
+}
 export const db = {
   // --- CUSTOM AUTHENTICATION ---
   async login(username, password) {
@@ -161,38 +187,48 @@ export const db = {
   },
 
   async getUserInfoForLogById(userId) {
-      if (!supabase || !userId) {
-        console.warn('[db.getUserInfoForLogById] Supabase client not init or no userId provided. Returning default.');
-        return { username: 'System (Unknown User)' }; // Default/fallback
-      }
-      try {
-        const { data, error } = await supabase
-          .from('users')
-          .select('username') // Only fetch what's needed for the log snapshot
-          .eq('id', userId)
-          .single();
+    if (!supabase || !userId) {
+      console.warn(
+        "[db.getUserInfoForLogById] Supabase client not init or no userId provided. Returning default."
+      );
+      return { username: "System (Unknown User)" }; // Default/fallback
+    }
+    try {
+      const { data, error } = await supabase
+        .from("users")
+        .select("username") // Only fetch what's needed for the log snapshot
+        .eq("id", userId)
+        .single();
 
-        if (error) {
-          console.warn(`[db.getUserInfoForLogById] Error fetching username for user ID ${userId}:`, error.message);
-          return { username: `System (User ID: ${userId})` }; // Fallback with ID
-        }
-        if (!data) {
-          console.warn(`[db.getUserInfoForLogById] User not found for ID ${userId}.`);
-          return { username: `System (User ID: ${userId} Not Found)` };
-        }
-        return { username: data.username }; // Return an object with the username
-      } catch (e) {
-        console.error(`[db.getUserInfoForLogById] Exception fetching username for user ID ${userId}:`, e.message);
-        return { username: `System (User ID: ${userId} Exception)` }; // Fallback
+      if (error) {
+        console.warn(
+          `[db.getUserInfoForLogById] Error fetching username for user ID ${userId}:`,
+          error.message
+        );
+        return { username: `System (User ID: ${userId})` }; // Fallback with ID
       }
-    },
+      if (!data) {
+        console.warn(
+          `[db.getUserInfoForLogById] User not found for ID ${userId}.`
+        );
+        return { username: `System (User ID: ${userId} Not Found)` };
+      }
+      return { username: data.username }; // Return an object with the username
+    } catch (e) {
+      console.error(
+        `[db.getUserInfoForLogById] Exception fetching username for user ID ${userId}:`,
+        e.message
+      );
+      return { username: `System (User ID: ${userId} Exception)` }; // Fallback
+    }
+  },
 
   // For custom auth, getCurrentUser and logout are managed by the application state
   // (e.g., a variable in Electron main.js and React's App.js state).
   // These are NOT Supabase Auth functions. The IPC handlers in main.js will manage this.
 
   // --- ITEM MANAGEMENT FUNCTIONS ---
-async getItems(filters = {}) {
+  async getItems(filters = {}) {
     if (!supabase) {
       console.error("[db.getItems] Supabase client not initialized!");
       return Promise.reject(new Error("Supabase client not initialized."));
@@ -200,309 +236,387 @@ async getItems(filters = {}) {
 
     try {
       // Start with the base query from the view that already gives total_quantity
-      let query = supabase.from('items_with_total_quantity').select('*');
+      let query = supabase.from("items_with_total_quantity").select("*");
 
       // Archival status filter
       if (filters.is_archived !== undefined) {
-        query = query.eq('is_archived', filters.is_archived);
+        query = query.eq("is_archived", filters.is_archived);
       } else {
-        query = query.eq('is_archived', false); // Default to active items
+        query = query.eq("is_archived", false); // Default to active items
       }
 
       // Category filter
       if (filters.category) {
-        query = query.eq('category', filters.category);
+        query = query.eq("category", filters.category);
       }
 
       // Search term filter
       if (filters.searchTerm) {
-        query = query.or(`name.ilike.%${filters.searchTerm}%,sku.ilike.%${filters.searchTerm}%`);
+        query = query.or(
+          `name.ilike.%${filters.searchTerm}%,sku.ilike.%${filters.searchTerm}%`
+        );
       }
 
       // Sorting (uses total_quantity from the view if sorting by 'quantity')
-      const sortByCol = filters.sortBy || 'name';
-      const sortOrderAsc = filters.sortOrder === 'asc';
-      const effectiveSortBy = sortByCol === 'quantity' ? 'total_quantity' : sortByCol;
+      const sortByCol = filters.sortBy || "name";
+      const sortOrderAsc = filters.sortOrder === "asc";
+      const effectiveSortBy =
+        sortByCol === "quantity" ? "total_quantity" : sortByCol;
       query = query.order(effectiveSortBy, { ascending: sortOrderAsc });
-      if (effectiveSortBy !== 'id') { // Secondary sort for stability
-          query = query.order('id', { ascending: true });
+      if (effectiveSortBy !== "id") {
+        // Secondary sort for stability
+        query = query.order("id", { ascending: true });
       }
 
       // Execute the primary query to get the list of items matching basic filters
       const { data: baseItems, error: baseItemsError } = await query;
 
       if (baseItemsError) {
-        console.error('[db.getItems] Error fetching base items:', baseItemsError);
+        console.error(
+          "[db.getItems] Error fetching base items:",
+          baseItemsError
+        );
         throw baseItemsError;
       }
 
       if (!baseItems || baseItems.length === 0) {
-        console.log('[db.getItems] No base items found matching criteria.');
+        console.log("[db.getItems] No base items found matching criteria.");
         return [];
       }
 
       // If stockAtLocationId is provided, enrich items with quantity_at_specific_location
-      if (filters.stockAtLocationId !== undefined && filters.stockAtLocationId !== null) {
-        console.log(`[db.getItems] Enriching items with stock for location ID: ${filters.stockAtLocationId}`);
+      if (
+        filters.stockAtLocationId !== undefined &&
+        filters.stockAtLocationId !== null
+      ) {
+        console.log(
+          `[db.getItems] Enriching items with stock for location ID: ${filters.stockAtLocationId}`
+        );
 
-        const itemIds = baseItems.map(item => item.id);
+        const itemIds = baseItems.map((item) => item.id);
 
         // Fetch all relevant item_location_quantities in one go
         const { data: locationQuantities, error: locQtyError } = await supabase
-            .from('item_location_quantities')
-            .select('item_id, quantity')
-            .eq('location_id', filters.stockAtLocationId)
-            .in('item_id', itemIds);
+          .from("item_location_quantities")
+          .select("item_id, quantity")
+          .eq("location_id", filters.stockAtLocationId)
+          .in("item_id", itemIds);
 
         if (locQtyError) {
-            console.error(`[db.getItems] Error fetching quantities for location ${filters.stockAtLocationId}:`, locQtyError);
-            // Decide how to handle: return baseItems, or throw, or return baseItems with quantity_at_specific_location as null/0
-            // For now, let's proceed but log the error. The map below will default to 0.
+          console.error(
+            `[db.getItems] Error fetching quantities for location ${filters.stockAtLocationId}:`,
+            locQtyError
+          );
+          // Decide how to handle: return baseItems, or throw, or return baseItems with quantity_at_specific_location as null/0
+          // For now, let's proceed but log the error. The map below will default to 0.
         }
 
         // Create a map for quick lookup of quantities
         const quantityMap = new Map();
         if (locationQuantities) {
-            locationQuantities.forEach(lq => {
-                quantityMap.set(lq.item_id, lq.quantity);
-            });
+          locationQuantities.forEach((lq) => {
+            quantityMap.set(lq.item_id, lq.quantity);
+          });
         }
 
         // Enrich baseItems
-        const enrichedItems = baseItems.map(item => ({
-            ...item,
-            quantity_at_specific_location: quantityMap.get(item.id) === undefined ? 0 : quantityMap.get(item.id)
-            // If an item ID is not in quantityMap, it means it has 0 stock at that location or no record.
+        const enrichedItems = baseItems.map((item) => ({
+          ...item,
+          quantity_at_specific_location:
+            quantityMap.get(item.id) === undefined
+              ? 0
+              : quantityMap.get(item.id),
+          // If an item ID is not in quantityMap, it means it has 0 stock at that location or no record.
         }));
 
-        console.log(`[db.getItems] Fetched and enriched ${enrichedItems.length} items.`);
+        console.log(
+          `[db.getItems] Fetched and enriched ${enrichedItems.length} items.`
+        );
         return enrichedItems;
-
       } else if (filters.storageLocation) {
-          // This block handles the old way of filtering by storageLocation NAME (for ItemManagementPage)
-          // It needs to be reconciled or ensure it doesn't interfere if stockAtLocationId is the primary way for BundleFormPage
-          console.log(`[db.getItems] Filtering by storage location NAME: ${filters.storageLocation}`);
-          // ... (your existing logic for filtering by storageLocation name, which fetches item IDs with stock > 0)
-          // This part might need adjustment if it's conflicting or if you want a unified approach.
-          // For now, I'll assume the `stockAtLocationId` path is what BundleFormPage uses.
-          // If ItemManagementPage also needs to show quantity_at_specific_location, this logic needs merging.
+        // This block handles the old way of filtering by storageLocation NAME (for ItemManagementPage)
+        // It needs to be reconciled or ensure it doesn't interfere if stockAtLocationId is the primary way for BundleFormPage
+        console.log(
+          `[db.getItems] Filtering by storage location NAME: ${filters.storageLocation}`
+        );
+        // ... (your existing logic for filtering by storageLocation name, which fetches item IDs with stock > 0)
+        // This part might need adjustment if it's conflicting or if you want a unified approach.
+        // For now, I'll assume the `stockAtLocationId` path is what BundleFormPage uses.
+        // If ItemManagementPage also needs to show quantity_at_specific_location, this logic needs merging.
 
-            const { data: locationData, error: locationError } = await supabase
-              .from('storage_locations')
-              .select('id')
-              .eq('name', filters.storageLocation)
-              .single();
+        const { data: locationData, error: locationError } = await supabase
+          .from("storage_locations")
+          .select("id")
+          .eq("name", filters.storageLocation)
+          .single();
 
-            if (locationError) throw locationError;
-            if (!locationData) return []; // No such location
+        if (locationError) throw locationError;
+        if (!locationData) return []; // No such location
 
-            const locationIdToFilter = locationData.id;
-            const { data: itemIdsAtLocation, error: itemIdsError } = await supabase
-              .from('item_location_quantities')
-              .select('item_id')
-              .eq('location_id', locationIdToFilter)
-              .gt('quantity', 0);
+        const locationIdToFilter = locationData.id;
+        const { data: itemIdsAtLocation, error: itemIdsError } = await supabase
+          .from("item_location_quantities")
+          .select("item_id")
+          .eq("location_id", locationIdToFilter)
+          .gt("quantity", 0);
 
-            if (itemIdsError) throw itemIdsError;
+        if (itemIdsError) throw itemIdsError;
 
-            const distinctItemIds = [...new Set((itemIdsAtLocation || []).map(ilq => ilq.item_id))];
-            if (distinctItemIds.length === 0) return [];
+        const distinctItemIds = [
+          ...new Set((itemIdsAtLocation || []).map((ilq) => ilq.item_id)),
+        ];
+        if (distinctItemIds.length === 0) return [];
 
-            // Filter the already fetched baseItems
-            const itemsAtNamedLocation = baseItems.filter(item => distinctItemIds.includes(item.id));
-            // Note: itemsAtNamedLocation here will NOT have quantity_at_specific_location unless you add another enrichment step
-            // similar to the stockAtLocationId block.
-            return itemsAtNamedLocation;
+        // Filter the already fetched baseItems
+        const itemsAtNamedLocation = baseItems.filter((item) =>
+          distinctItemIds.includes(item.id)
+        );
+        // Note: itemsAtNamedLocation here will NOT have quantity_at_specific_location unless you add another enrichment step
+        // similar to the stockAtLocationId block.
+        return itemsAtNamedLocation;
       }
 
       // If no specific location filtering that requires quantity_at_specific_location, return baseItems
       // (they will have total_quantity from the view, but quantity_at_specific_location will be undefined)
-      console.log(`[db.getItems] Fetched ${baseItems.length} items without specific location enrichment.`);
-      return baseItems.map(item => ({
-          ...item,
-          // Ensure quantity_at_specific_location is at least null or 0 if not explicitly fetched
-          quantity_at_specific_location: item.quantity_at_specific_location === undefined ? null : item.quantity_at_specific_location
+      console.log(
+        `[db.getItems] Fetched ${baseItems.length} items without specific location enrichment.`
+      );
+      return baseItems.map((item) => ({
+        ...item,
+        // Ensure quantity_at_specific_location is at least null or 0 if not explicitly fetched
+        quantity_at_specific_location:
+          item.quantity_at_specific_location === undefined
+            ? null
+            : item.quantity_at_specific_location,
       }));
-
     } catch (error) {
-      console.error('[db.getItems] General error in function execution:', error.message);
+      console.error(
+        "[db.getItems] General error in function execution:",
+        error.message
+      );
       throw error;
     }
   },
 
   async getItemById(itemId) {
-      if (!supabase || !itemId) return Promise.reject(new Error("Supabase client or itemId not provided."));
-      try {
-        const { data: itemData, error: itemError } = await supabase
-          .from('items_with_total_quantity') // Use the view for master details + total_quantity
-          .select('*')
-          .eq('id', itemId)
-          .single();
+    if (!supabase || !itemId)
+      return Promise.reject(
+        new Error("Supabase client or itemId not provided.")
+      );
+    try {
+      const { data: itemData, error: itemError } = await supabase
+        .from("items_with_total_quantity") // Use the view for master details + total_quantity
+        .select("*")
+        .eq("id", itemId)
+        .single();
 
-        if (itemError) throw itemError;
-        if (!itemData) return null;
+      if (itemError) throw itemError;
+      if (!itemData) return null;
 
-        // Fetch quantities per location for this item
-        const { data: locationsData, error: locError } = await supabase
-          .from('item_location_quantities')
-          .select('quantity, location:storage_locations!inner(id, name)') // Join to get location name and ID
-          .eq('item_id', itemId);
+      // Fetch quantities per location for this item
+      const { data: locationsData, error: locError } = await supabase
+        .from("item_location_quantities")
+        .select("quantity, location:storage_locations!inner(id, name)") // Join to get location name and ID
+        .eq("item_id", itemId);
 
-        if (locError) {
-          console.error(`Error fetching location quantities for item ${itemId}:`, locError);
-          itemData.locations = []; // Default to empty if error
-        } else {
-          itemData.locations = (locationsData || []).map(l => ({
-            locationId: l.location.id,
-            locationName: l.location.name,
-            quantity: l.quantity
-          }));
-        }
-        return itemData;
-      } catch (error) {
-        console.error(`Error in getItemById (ID: ${itemId}):`, error);
-        throw error;
+      if (locError) {
+        console.error(
+          `Error fetching location quantities for item ${itemId}:`,
+          locError
+        );
+        itemData.locations = []; // Default to empty if error
+      } else {
+        itemData.locations = (locationsData || []).map((l) => ({
+          locationId: l.location.id,
+          locationName: l.location.name,
+          quantity: l.quantity,
+        }));
       }
-    },
+      return itemData;
+    } catch (error) {
+      console.error(`Error in getItemById (ID: ${itemId}):`, error);
+      throw error;
+    }
+  },
 
-  async createItem(itemData, initialStockEntries = [], createdByUserId, createdByUsername) {
-      // itemData: { name, sku, description, cost_price, category, variant, status }
-      // initialStockEntries: Array of objects [{ locationId, quantity, locationName (optional for logging) }, ...]
-      // createdByUserId, createdByUsername: For logging the initial stock entries
+  async createItem(
+    itemData,
+    initialStockEntries = [],
+    createdByUserId,
+    createdByUsername
+  ) {
+    // itemData: { name, sku, description, cost_price, category, variant, status }
+    // initialStockEntries: Array of objects [{ locationId, quantity, locationName (optional for logging) }, ...]
+    // createdByUserId, createdByUsername: For logging the initial stock entries
 
-      if (!supabase) {
-        return { success: false, message: "Database client not initialized." };
+    if (!supabase) {
+      return { success: false, message: "Database client not initialized." };
+    }
+
+    // 1. Prepare data for the 'items' table (excluding quantity and master storage_location)
+    const itemRecordToInsert = {
+      name: itemData.name,
+      sku: itemData.sku || null, // SKU can be optional
+      description: itemData.description || null,
+      cost_price: parseFloat(itemData.cost_price) || 0,
+      category: itemData.category || "Uncategorized",
+      variant: itemData.variant || null,
+      status: itemData.status || "Normal",
+      is_archived: false, // New items are active by default
+      // created_at and updated_at are usually handled by database defaults/triggers
+    };
+
+    let newItem; // To store the created item from the 'items' table
+
+    try {
+      // 2. Insert into the 'items' table
+      const { data, error: itemInsertError } = await supabase
+        .from("items")
+        .insert([itemRecordToInsert])
+        .select() // Select the newly inserted item
+        .single(); // Expecting a single row back
+
+      if (itemInsertError) {
+        console.error(
+          "Error creating item master record in Supabase:",
+          itemInsertError
+        );
+        throw itemInsertError; // Let the outer catch handle it
       }
+      if (!data) {
+        throw new Error("Item master record creation failed to return data.");
+      }
+      newItem = data; // Store the successfully created item master
 
-      // 1. Prepare data for the 'items' table (excluding quantity and master storage_location)
-      const itemRecordToInsert = {
-        name: itemData.name,
-        sku: itemData.sku || null, // SKU can be optional
-        description: itemData.description || null,
-        cost_price: parseFloat(itemData.cost_price) || 0,
-        category: itemData.category || "Uncategorized",
-        variant: itemData.variant || null,
-        status: itemData.status || "Normal",
-        is_archived: false, // New items are active by default
-        // created_at and updated_at are usually handled by database defaults/triggers
-      };
+      // 3. Process initial stock entries by inserting into 'item_location_quantities'
+      //    and logging via 'inventory_transactions' (using adjustStockQuantity RPC)
+      if (
+        initialStockEntries &&
+        Array.isArray(initialStockEntries) &&
+        initialStockEntries.length > 0
+      ) {
+        for (const stockEntry of initialStockEntries) {
+          if (stockEntry.locationId && Number(stockEntry.quantity) > 0) {
+            const transactionDetails = {
+              transactionType: "INITIAL_STOCK_ENTRY", // Define this in your TRANSACTION_TYPES
+              referenceId: String(newItem.id), // Link to the new item ID
+              referenceType: "NEW_ITEM_CREATION",
+              userId: createdByUserId, // ID of user creating the item
+              usernameSnapshot: createdByUsername, // Username of user
+              notes: `Initial stock for new item "${
+                newItem.name
+              }" at location ID ${stockEntry.locationId}${
+                stockEntry.locationName ? ` (${stockEntry.locationName})` : ""
+              }.`,
+            };
 
-      let newItem; // To store the created item from the 'items' table
+            console.log(
+              `[db.createItem] Adding initial stock for item ${newItem.id} at loc ${stockEntry.locationId}: qty ${stockEntry.quantity}`
+            );
+            // db.adjustStockQuantity now expects locationId as the second argument
+            const adjustmentResult = await db.adjustStockQuantity(
+              newItem.id,
+              stockEntry.locationId,
+              Number(stockEntry.quantity), // Must be a positive number for initial stock
+              transactionDetails
+            );
 
-      try {
-        // 2. Insert into the 'items' table
-        const { data, error: itemInsertError } = await supabase
-          .from("items")
-          .insert([itemRecordToInsert])
-          .select() // Select the newly inserted item
-          .single(); // Expecting a single row back
-
-        if (itemInsertError) {
-          console.error("Error creating item master record in Supabase:", itemInsertError);
-          throw itemInsertError; // Let the outer catch handle it
-        }
-        if (!data) {
-          throw new Error("Item master record creation failed to return data.");
-        }
-        newItem = data; // Store the successfully created item master
-
-        // 3. Process initial stock entries by inserting into 'item_location_quantities'
-        //    and logging via 'inventory_transactions' (using adjustStockQuantity RPC)
-        if (initialStockEntries && Array.isArray(initialStockEntries) && initialStockEntries.length > 0) {
-          for (const stockEntry of initialStockEntries) {
-            if (stockEntry.locationId && Number(stockEntry.quantity) > 0) {
-              const transactionDetails = {
-                transactionType: 'INITIAL_STOCK_ENTRY', // Define this in your TRANSACTION_TYPES
-                referenceId: String(newItem.id),        // Link to the new item ID
-                referenceType: 'NEW_ITEM_CREATION',
-                userId: createdByUserId,                // ID of user creating the item
-                usernameSnapshot: createdByUsername,    // Username of user
-                notes: `Initial stock for new item "${newItem.name}" at location ID ${stockEntry.locationId}${stockEntry.locationName ? ` (${stockEntry.locationName})` : ''}.`,
-              };
-
-              console.log(`[db.createItem] Adding initial stock for item ${newItem.id} at loc ${stockEntry.locationId}: qty ${stockEntry.quantity}`);
-              // db.adjustStockQuantity now expects locationId as the second argument
-              const adjustmentResult = await db.adjustStockQuantity(
-                newItem.id,
-                stockEntry.locationId,
-                Number(stockEntry.quantity), // Must be a positive number for initial stock
-                transactionDetails
+            if (!adjustmentResult.success) {
+              // This is a partial failure state: item master created, but some initial stock failed.
+              // For simplicity, we'll report the item creation as successful but log this error.
+              // A more robust solution might involve rolling back the item master creation.
+              console.error(
+                `[db.createItem] Failed to add initial stock for item ${newItem.id} at location ${stockEntry.locationId}: ${adjustmentResult.message}`
               );
-
-              if (!adjustmentResult.success) {
-                // This is a partial failure state: item master created, but some initial stock failed.
-                // For simplicity, we'll report the item creation as successful but log this error.
-                // A more robust solution might involve rolling back the item master creation.
-                console.error(
-                  `[db.createItem] Failed to add initial stock for item ${newItem.id} at location ${stockEntry.locationId}: ${adjustmentResult.message}`
-                );
-                // Optionally, collect these errors to return to the user.
-              }
+              // Optionally, collect these errors to return to the user.
             }
           }
         }
-
-        return { success: true, item: newItem, message: "Item created successfully with initial stock." };
-
-      } catch (error) {
-        console.error("Error in createItem process:", error);
-        // If newItem was created but subsequent stock entries failed, the item master still exists.
-        // Depending on requirements, you might want to delete newItem here if any part of initial stock fails.
-        // For now, it returns a general failure message.
-        return {
-          success: false,
-          message: error.message || "Failed to create item or set initial stock.",
-        };
       }
-    },
 
-    async adjustStockQuantity(itemId, locationId, adjustmentQtyNumeric, transactionDetails) {
-          if (!supabase) return { success: false, message: "Database client not initialized." };
+      return {
+        success: true,
+        item: newItem,
+        message: "Item created successfully with initial stock.",
+      };
+    } catch (error) {
+      console.error("Error in createItem process:", error);
+      // If newItem was created but subsequent stock entries failed, the item master still exists.
+      // Depending on requirements, you might want to delete newItem here if any part of initial stock fails.
+      // For now, it returns a general failure message.
+      return {
+        success: false,
+        message: error.message || "Failed to create item or set initial stock.",
+      };
+    }
+  },
 
-          if (itemId === undefined || itemId === null ||
-              locationId === undefined || locationId === null || // Explicitly check locationId
-              typeof adjustmentQtyNumeric !== 'number') {
-              console.error('[db.adjustStockQuantity] Validation failed. Details:',
-                  { itemId, locationIdProvided: locationId, adjustmentQtyNumeric });
-              return { success: false, message: "Invalid item, location, or quantity." };
-          }
-          // ... rest of the function (RPC call)
-          // Ensure your RPC 'adjust_item_quantity' correctly uses p_location_id
-          try {
-              const rpcParams = {
-                  p_item_id: itemId,
-                  p_location_id: locationId, // This is passed to the RPC
-                  p_adjustment_qty: adjustmentQtyNumeric,
-                  p_transaction_type: transactionDetails.transactionType,
-                  p_reference_id: transactionDetails.referenceId || null,
-                  p_reference_type: transactionDetails.referenceType || null,
-                  p_user_id: transactionDetails.userId || null,
-                  p_username_snapshot: transactionDetails.usernameSnapshot || null,
-                  p_notes: transactionDetails.notes || null,
-              };
-              // console.log('[db.adjustStockQuantity] Calling RPC with params:', rpcParams);
-              const { data: rpcResultData, error: rpcError } = await supabase.rpc("adjust_item_quantity", rpcParams);
+  async adjustStockQuantity(
+    itemId,
+    locationId,
+    adjustmentQtyNumeric,
+    transactionDetails
+  ) {
+    if (!supabase)
+      return { success: false, message: "Database client not initialized." };
 
-              if (rpcError) {
-                  console.error('[db.adjustStockQuantity] RPC error:', rpcError);
-                  throw rpcError;
-              }
-              // The RPC should return the new quantity at the location, or handle errors internally
-              // For this example, let's assume it returns the new quantity or throws.
-              // If your RPC returns a more complex object, adjust accordingly.
-              const newQuantityAtLocation = (typeof rpcResultData === 'number') ? rpcResultData : null;
-              if (newQuantityAtLocation === null && adjustmentQtyNumeric !== 0) {
-                   // This might indicate an issue if the RPC was expected to return a value
-                   // console.warn('[db.adjustStockQuantity] RPC did not return a numeric quantity.');
-              }
+    if (
+      itemId === undefined ||
+      itemId === null ||
+      locationId === undefined ||
+      locationId === null || // Explicitly check locationId
+      typeof adjustmentQtyNumeric !== "number"
+    ) {
+      console.error("[db.adjustStockQuantity] Validation failed. Details:", {
+        itemId,
+        locationIdProvided: locationId,
+        adjustmentQtyNumeric,
+      });
+      return {
+        success: false,
+        message: "Invalid item, location, or quantity.",
+      };
+    }
+    // ... rest of the function (RPC call)
+    // Ensure your RPC 'adjust_item_quantity' correctly uses p_location_id
+    try {
+      const rpcParams = {
+        p_item_id: itemId,
+        p_location_id: locationId, // This is passed to the RPC
+        p_adjustment_qty: adjustmentQtyNumeric,
+        p_transaction_type: transactionDetails.transactionType,
+        p_reference_id: transactionDetails.referenceId || null,
+        p_reference_type: transactionDetails.referenceType || null,
+        p_user_id: transactionDetails.userId || null,
+        p_username_snapshot: transactionDetails.usernameSnapshot || null,
+        p_notes: transactionDetails.notes || null,
+      };
+      // console.log('[db.adjustStockQuantity] Calling RPC with params:', rpcParams);
+      const { data: rpcResultData, error: rpcError } = await supabase.rpc(
+        "adjust_item_quantity",
+        rpcParams
+      );
 
-              return { success: true, newQuantityAtLocation: newQuantityAtLocation }; // Ensure newQuantityAtLocation is what RPC returns
-          } catch (error) {
-              console.error("[db.adjustStockQuantity] Catch block error:", error);
-              return { success: false, message: error.message || "RPC call failed." };
-          }
-      },
+      if (rpcError) {
+        console.error("[db.adjustStockQuantity] RPC error:", rpcError);
+        throw rpcError;
+      }
+      // The RPC should return the new quantity at the location, or handle errors internally
+      // For this example, let's assume it returns the new quantity or throws.
+      // If your RPC returns a more complex object, adjust accordingly.
+      const newQuantityAtLocation =
+        typeof rpcResultData === "number" ? rpcResultData : null;
+      if (newQuantityAtLocation === null && adjustmentQtyNumeric !== 0) {
+        // This might indicate an issue if the RPC was expected to return a value
+        // console.warn('[db.adjustStockQuantity] RPC did not return a numeric quantity.');
+      }
 
+      return { success: true, newQuantityAtLocation: newQuantityAtLocation }; // Ensure newQuantityAtLocation is what RPC returns
+    } catch (error) {
+      console.error("[db.adjustStockQuantity] Catch block error:", error);
+      return { success: false, message: error.message || "RPC call failed." };
+    }
+  },
 
   async updateItem(id, itemData) {
     // id is separate, itemData is the object of fields to update
@@ -554,68 +668,96 @@ async getItems(filters = {}) {
 
   // --- ANALYTICS FUNCTIONS ---
   async getInventorySummary() {
-      if (!supabase) return { success: false, message: "Database client not initialized.", summary: null };
-      try {
-          // Fetch total unique active items
-          const { count: totalUniqueItemsCount, error: countError } = await supabase
-              .from('items') // This still queries 'items' for the count of unique items
-              .select('*', { count: 'exact', head: true })
-              .eq('is_archived', false);
+    if (!supabase)
+      return {
+        success: false,
+        message: "Database client not initialized.",
+        summary: null,
+      };
+    try {
+      // Fetch total unique active items
+      const { count: totalUniqueItemsCount, error: countError } = await supabase
+        .from("items") // This still queries 'items' for the count of unique items
+        .select("*", { count: "exact", head: true })
+        .eq("is_archived", false);
 
-          if (countError) {
-              console.error('[db.getInventorySummary] Error counting items:', countError);
-              throw countError;
-          }
-
-          // Fetch sum of quantities and values using the RPC
-          const { data: totalsData, error: totalsError } = await supabase
-              .rpc('get_overall_inventory_totals');
-
-          if (totalsError) {
-              console.error('[db.getInventorySummary] Error calling RPC get_overall_inventory_totals:', totalsError);
-              throw totalsError;
-          }
-
-          const summaryData = totalsData && totalsData.length > 0 ? totalsData[0] : { total_stock_quantity: 0, estimated_total_value: 0 };
-
-          return {
-              success: true,
-              summary: {
-                  totalUniqueItems: totalUniqueItemsCount || 0,
-                  totalStockQuantity: Number(summaryData.total_stock_quantity) || 0,
-                  estimatedTotalValue: Number(summaryData.estimated_total_value) || 0
-              }
-          };
-      } catch (error) {
-          console.error('[db.getInventorySummary] Error:', error);
-          return { success: false, message: error.message || "Failed to get summary.", summary: null };
+      if (countError) {
+        console.error(
+          "[db.getInventorySummary] Error counting items:",
+          countError
+        );
+        throw countError;
       }
+
+      // Fetch sum of quantities and values using the RPC
+      const { data: totalsData, error: totalsError } = await supabase.rpc(
+        "get_overall_inventory_totals"
+      );
+
+      if (totalsError) {
+        console.error(
+          "[db.getInventorySummary] Error calling RPC get_overall_inventory_totals:",
+          totalsError
+        );
+        throw totalsError;
+      }
+
+      const summaryData =
+        totalsData && totalsData.length > 0
+          ? totalsData[0]
+          : { total_stock_quantity: 0, estimated_total_value: 0 };
+
+      return {
+        success: true,
+        summary: {
+          totalUniqueItems: totalUniqueItemsCount || 0,
+          totalStockQuantity: Number(summaryData.total_stock_quantity) || 0,
+          estimatedTotalValue: Number(summaryData.estimated_total_value) || 0,
+        },
+      };
+    } catch (error) {
+      console.error("[db.getInventorySummary] Error:", error);
+      return {
+        success: false,
+        message: error.message || "Failed to get summary.",
+        summary: null,
+      };
+    }
   },
 
   // getLowStockItems: Stays the same.
   async getLowStockItems(threshold = 10) {
-      if (!supabase) return { success: false, message: "Database client not initialized.", items: [] };
-      try {
-          const { data, error } = await supabase
-              .from('items_with_total_quantity') // Uses the view
-              .select('id, name, sku, total_quantity, category') // Selects total_quantity
-              .eq('is_archived', false)
-              .lt('total_quantity', threshold)
-              .order('total_quantity', { ascending: true });
+    if (!supabase)
+      return {
+        success: false,
+        message: "Database client not initialized.",
+        items: [],
+      };
+    try {
+      const { data, error } = await supabase
+        .from("items_with_total_quantity") // Uses the view
+        .select("id, name, sku, total_quantity, category") // Selects total_quantity
+        .eq("is_archived", false)
+        .lt("total_quantity", threshold)
+        .order("total_quantity", { ascending: true });
 
-          if (error) throw error;
+      if (error) throw error;
 
-          // AnalyticsPage.js (for the list) expects 'item.quantity'
-          // So, map total_quantity to quantity for this specific consumer.
-          const itemsToReturn = (data || []).map(item => ({
-              ...item,
-              quantity: item.total_quantity // Map here
-          }));
-          return { success: true, items: itemsToReturn };
-      } catch (error) {
-          console.error('[db.getLowStockItems] Error:', error);
-          return { success: false, message: error.message || "Failed to get low stock items.", items: [] };
-      }
+      // AnalyticsPage.js (for the list) expects 'item.quantity'
+      // So, map total_quantity to quantity for this specific consumer.
+      const itemsToReturn = (data || []).map((item) => ({
+        ...item,
+        quantity: item.total_quantity, // Map here
+      }));
+      return { success: true, items: itemsToReturn };
+    } catch (error) {
+      console.error("[db.getLowStockItems] Error:", error);
+      return {
+        success: false,
+        message: error.message || "Failed to get low stock items.",
+        items: [],
+      };
+    }
   },
 
   // NEW: Get inventory breakdown by category
@@ -652,71 +794,128 @@ async getItems(filters = {}) {
 
   // NEW: Get inventory breakdown by storage location
   async getTodaysSalesTotal() {
-      if (!supabase) return { success: false, message: "Database client not initialized.", total: 0 };
-      try {
-        const today = new Date();
-        const startDate = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0, 0).toISOString();
-        const endDate = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999).toISOString();
+    if (!supabase)
+      return {
+        success: false,
+        message: "Database client not initialized.",
+        total: 0,
+      };
+    try {
+      const today = new Date();
+      const startDate = new Date(
+        today.getFullYear(),
+        today.getMonth(),
+        today.getDate(),
+        0,
+        0,
+        0,
+        0
+      ).toISOString();
+      const endDate = new Date(
+        today.getFullYear(),
+        today.getMonth(),
+        today.getDate(),
+        23,
+        59,
+        59,
+        999
+      ).toISOString();
 
-        console.log(`[db.getTodaysSalesTotal] Fetching sales from ${startDate} to ${endDate}`);
+      console.log(
+        `[db.getTodaysSalesTotal] Fetching sales from ${startDate} to ${endDate}`
+      );
 
-        // We sum 'total_amount' from 'sales_orders' table where status is 'Fulfilled' and order_date is today.
-        // If you also want to include other statuses like 'Awaiting Payment' if that counts as a "sale" for this metric, adjust the filter.
-        const { data, error } = await supabase
-          .from('sales_orders')
-          .select('total_amount')
-          .eq('status', 'Fulfilled') // Only count fulfilled orders as completed sales for total value
-          .gte('order_date', startDate) // order_date greater than or equal to start of today
-          .lte('order_date', endDate);  // order_date less than or equal to end of today
+      // We sum 'total_amount' from 'sales_orders' table where status is 'Fulfilled' and order_date is today.
+      // If you also want to include other statuses like 'Awaiting Payment' if that counts as a "sale" for this metric, adjust the filter.
+      const { data, error } = await supabase
+        .from("sales_orders")
+        .select("total_amount")
+        .eq("status", "Fulfilled") // Only count fulfilled orders as completed sales for total value
+        .gte("order_date", startDate) // order_date greater than or equal to start of today
+        .lte("order_date", endDate); // order_date less than or equal to end of today
 
-        if (error) {
-          console.error('[db.getTodaysSalesTotal] Supabase error:', error);
-          throw error;
-        }
-
-        const totalSalesValue = (data || []).reduce((sum, order) => sum + (Number(order.total_amount) || 0), 0);
-        console.log(`[db.getTodaysSalesTotal] Calculated total: ${totalSalesValue}`);
-        return { success: true, total: totalSalesValue };
-
-      } catch (error) {
-        console.error('[db.getTodaysSalesTotal] Error:', error);
-        return { success: false, message: error.message || "Failed to get today's sales total.", total: 0 };
+      if (error) {
+        console.error("[db.getTodaysSalesTotal] Supabase error:", error);
+        throw error;
       }
-    },
 
-    // --- REVISED: Get New Orders Count for Today ---
-    async getNewOrdersCount() {
-      if (!supabase) return { success: false, message: "Database client not initialized.", count: 0 };
-      try {
-        const today = new Date();
-        const startDate = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0, 0).toISOString();
-        const endDate = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999).toISOString();
+      const totalSalesValue = (data || []).reduce(
+        (sum, order) => sum + (Number(order.total_amount) || 0),
+        0
+      );
+      console.log(
+        `[db.getTodaysSalesTotal] Calculated total: ${totalSalesValue}`
+      );
+      return { success: true, total: totalSalesValue };
+    } catch (error) {
+      console.error("[db.getTodaysSalesTotal] Error:", error);
+      return {
+        success: false,
+        message: error.message || "Failed to get today's sales total.",
+        total: 0,
+      };
+    }
+  },
 
-        console.log(`[db.getNewOrdersCount] Fetching new orders from ${startDate} to ${endDate}`);
+  // --- REVISED: Get New Orders Count for Today ---
+  async getNewOrdersCount() {
+    if (!supabase)
+      return {
+        success: false,
+        message: "Database client not initialized.",
+        count: 0,
+      };
+    try {
+      const today = new Date();
+      const startDate = new Date(
+        today.getFullYear(),
+        today.getMonth(),
+        today.getDate(),
+        0,
+        0,
+        0,
+        0
+      ).toISOString();
+      const endDate = new Date(
+        today.getFullYear(),
+        today.getMonth(),
+        today.getDate(),
+        23,
+        59,
+        59,
+        999
+      ).toISOString();
 
-        // Counts orders created today, regardless of status, or you can filter by status like 'Pending', 'Confirmed'
-        // For "New Orders", 'Pending' or 'Confirmed' often makes sense.
-        const { count, error } = await supabase
-          .from('sales_orders')
-          .select('*', { count: 'exact', head: true }) // We just need the count
-          .gte('created_at', startDate) // Use created_at for when the order record was actually made
-          .lte('created_at', endDate)
-          // Optionally filter by status if "new" means specific statuses:
-          // .in('status', ['Pending', 'Confirmed', 'Awaiting Payment'])
+      console.log(
+        `[db.getNewOrdersCount] Fetching new orders from ${startDate} to ${endDate}`
+      );
 
-        if (error) {
-          console.error('[db.getNewOrdersCount] Supabase error:', error);
-          throw error;
-        }
+      // Counts orders created today, regardless of status, or you can filter by status like 'Pending', 'Confirmed'
+      // For "New Orders", 'Pending' or 'Confirmed' often makes sense.
+      const { count, error } = await supabase
+        .from("sales_orders")
+        .select("*", { count: "exact", head: true }) // We just need the count
+        .gte("created_at", startDate) // Use created_at for when the order record was actually made
+        .lte("created_at", endDate);
+      // Optionally filter by status if "new" means specific statuses:
+      // .in('status', ['Pending', 'Confirmed', 'Awaiting Payment'])
 
-        console.log(`[db.getNewOrdersCount] Count: ${count}`);
-        return { success: true, count: count || 0 };
-
-      } catch (error) {
-        console.error('[db.getNewOrdersCount] Error:', error);
-        return { success: false, message: error.message || "Failed to get new orders count.", count: 0 };
+      if (error) {
+        console.error("[db.getNewOrdersCount] Supabase error:", error);
+        throw error;
       }
-    },
+
+      console.log(`[db.getNewOrdersCount] Count: ${count}`);
+      return { success: true, count: count || 0 };
+    } catch (error) {
+      console.error("[db.getNewOrdersCount] Error:", error);
+      return {
+        success: false,
+        message: error.message || "Failed to get new orders count.",
+        count: 0,
+      };
+    }
+  },
 
   async getTopSellingProductsByQuantity(limit = 5, dateRange = null) {
     // Requires a 'sales_items' table or similar, joining with 'items'
@@ -1099,7 +1298,6 @@ user:users ( id, username )
     }
   },
 
-
   // Function to get inventory transactions for an item (for the new page)
   async getInventoryTransactionsForItem(itemId, limit = 50, offset = 0) {
     if (!supabase)
@@ -1215,220 +1413,317 @@ user:users ( id, username )
     }
   },
 
-  async getBundles(filters = {}) { // filters might include { storeLocationId, searchTerm, isActive }
-      if (!supabase) return Promise.reject(new Error("Supabase client not initialized."));
-      try {
-          let query = supabase.from("bundles").select("*");
+  async getBundles(filters = {}) {
+    // filters might include { storeLocationId, searchTerm, isActive }
+    if (!supabase)
+      return Promise.reject(new Error("Supabase client not initialized."));
+    try {
+      let query = supabase.from("bundles").select("*");
 
-          if (filters.isActive !== undefined) query = query.eq("is_active", filters.isActive);
-          if (filters.searchTerm) query = query.or(`name.ilike.%${filters.searchTerm}%,bundle_sku.ilike.%${filters.searchTerm}%`);
-          // Add other filters for bundles if needed
+      if (filters.isActive !== undefined)
+        query = query.eq("is_active", filters.isActive);
+      if (filters.searchTerm)
+        query = query.or(
+          `name.ilike.%${filters.searchTerm}%,bundle_sku.ilike.%${filters.searchTerm}%`
+        );
+      // Add other filters for bundles if needed
 
-          const { data: bundlesData, error } = await query.order("name");
-          if (error) throw error;
+      const { data: bundlesData, error } = await query.order("name");
+      if (error) throw error;
 
-          const bundlesWithEnrichedComponents = [];
-          for (const bundle of bundlesData || []) {
-              // Fetch components for this bundle
-              const { data: componentsData, error: compError } = await supabase
-                  .from("bundle_components")
-                  // Select basic item details directly with the component
-                  .select("item_id, quantity_in_bundle, item:items!inner(id, name, sku)")
-                  .eq("bundle_id", bundle.id);
+      const bundlesWithEnrichedComponents = [];
+      for (const bundle of bundlesData || []) {
+        // Fetch components for this bundle
+        const { data: componentsData, error: compError } = await supabase
+          .from("bundle_components")
+          // Select basic item details directly with the component
+          .select(
+            "item_id, quantity_in_bundle, item:items!inner(id, name, sku)"
+          )
+          .eq("bundle_id", bundle.id);
 
-              if (compError) {
-                  console.error(`Error fetching components for bundle ${bundle.id}`, compError);
-                  bundlesWithEnrichedComponents.push({ ...bundle, components: [] }); // Add bundle even if components fail
-                  continue;
+        if (compError) {
+          console.error(
+            `Error fetching components for bundle ${bundle.id}`,
+            compError
+          );
+          bundlesWithEnrichedComponents.push({ ...bundle, components: [] }); // Add bundle even if components fail
+          continue;
+        }
+
+        let enrichedComponents = componentsData || [];
+        if (
+          filters.storeLocationId &&
+          componentsData &&
+          componentsData.length > 0
+        ) {
+          // If storeLocationId is provided, enrich components with specific location quantity
+          enrichedComponents = await Promise.all(
+            componentsData.map(async (comp) => {
+              if (!comp.item_id)
+                return {
+                  ...comp,
+                  item: { ...comp.item, quantity_at_specific_location: 0 },
+                }; // Should not happen if item_id is FK
+
+              const { data: locQtyData, error: locQtyError } = await supabase
+                .from("item_location_quantities")
+                .select("quantity")
+                .eq("item_id", comp.item_id)
+                .eq("location_id", filters.storeLocationId)
+                .single();
+
+              // Handle cases where item might not have a record in item_location_quantities for that store
+              if (locQtyError && locQtyError.code !== "PGRST116") {
+                // PGRST116: " esattamente una riga attesa" - no row found
+                console.error(
+                  `Error fetching location quantity for item ${comp.item_id} at store ${filters.storeLocationId}`,
+                  locQtyError
+                );
               }
 
-              let enrichedComponents = componentsData || [];
-              if (filters.storeLocationId && componentsData && componentsData.length > 0) {
-                  // If storeLocationId is provided, enrich components with specific location quantity
-                  enrichedComponents = await Promise.all(componentsData.map(async (comp) => {
-                      if (!comp.item_id) return { ...comp, item: { ...comp.item, quantity_at_specific_location: 0 } }; // Should not happen if item_id is FK
+              return {
+                ...comp, // contains item_id, quantity_in_bundle, and item object (id, name, sku)
+                item: {
+                  ...comp.item, // Spread existing item properties (id, name, sku)
+                  quantity_at_specific_location: locQtyData
+                    ? locQtyData.quantity
+                    : 0,
+                },
+              };
+            })
+          );
+        } else if (componentsData) {
+          // If no storeLocationId, ensure quantity_at_specific_location is at least null or 0
+          enrichedComponents = componentsData.map((comp) => ({
+            ...comp,
+            item: {
+              ...comp.item,
+              quantity_at_specific_location: null, // Or 0, depending on how you want to handle it
+            },
+          }));
+        }
 
-                      const { data: locQtyData, error: locQtyError } = await supabase
-                          .from('item_location_quantities')
-                          .select('quantity')
-                          .eq('item_id', comp.item_id)
-                          .eq('location_id', filters.storeLocationId)
-                          .single();
-
-                      // Handle cases where item might not have a record in item_location_quantities for that store
-                      if (locQtyError && locQtyError.code !== 'PGRST116') { // PGRST116: " esattamente una riga attesa" - no row found
-                          console.error(`Error fetching location quantity for item ${comp.item_id} at store ${filters.storeLocationId}`, locQtyError);
-                      }
-
-                      return {
-                          ...comp, // contains item_id, quantity_in_bundle, and item object (id, name, sku)
-                          item: {
-                              ...comp.item, // Spread existing item properties (id, name, sku)
-                              quantity_at_specific_location: locQtyData ? locQtyData.quantity : 0
-                          }
-                      };
-                  }));
-              } else if (componentsData) {
-                  // If no storeLocationId, ensure quantity_at_specific_location is at least null or 0
-                   enrichedComponents = componentsData.map(comp => ({
-                      ...comp,
-                      item: {
-                          ...comp.item,
-                          quantity_at_specific_location: null // Or 0, depending on how you want to handle it
-                      }
-                  }));
-              }
-
-              bundlesWithEnrichedComponents.push({ ...bundle, components: enrichedComponents });
-          }
-          return bundlesWithEnrichedComponents;
-      } catch (error) {
-          console.error("[db.getBundles] Error:", error);
-          throw error;
+        bundlesWithEnrichedComponents.push({
+          ...bundle,
+          components: enrichedComponents,
+        });
       }
+      return bundlesWithEnrichedComponents;
+    } catch (error) {
+      console.error("[db.getBundles] Error:", error);
+      throw error;
+    }
   },
 
- async getBundleById(id) {
-     if (!supabase) return Promise.reject(new Error("Supabase client not initialized."));
-     try {
-         const { data: bundle, error: bundleError } = await supabase
-             .from("bundles")
-             .select("*")
-             .eq("id", id)
-             .single();
+  async getBundleById(id) {
+    if (!supabase)
+      return Promise.reject(new Error("Supabase client not initialized."));
+    try {
+      const { data: bundle, error: bundleError } = await supabase
+        .from("bundles")
+        .select("*")
+        .eq("id", id)
+        .single();
 
-         if (bundleError) {
-             // If bundle not found (PGRST116), it's a valid case, return null
-             if (bundleError.code === 'PGRST116') {
-                 console.warn(`[db.getBundleById] Bundle with ID ${id} not found.`);
-                 return null;
-             }
-             console.error(`[db.getBundleById] Error fetching bundle master for ID ${id}:`, bundleError);
-             throw bundleError;
-         }
+      if (bundleError) {
+        // If bundle not found (PGRST116), it's a valid case, return null
+        if (bundleError.code === "PGRST116") {
+          console.warn(`[db.getBundleById] Bundle with ID ${id} not found.`);
+          return null;
+        }
+        console.error(
+          `[db.getBundleById] Error fetching bundle master for ID ${id}:`,
+          bundleError
+        );
+        throw bundleError;
+      }
 
-         if (!bundle) { // Should be caught by PGRST116, but as a safeguard
-              console.warn(`[db.getBundleById] Bundle with ID ${id} not found (no data).`);
-             return null;
-         }
+      if (!bundle) {
+        // Should be caught by PGRST116, but as a safeguard
+        console.warn(
+          `[db.getBundleById] Bundle with ID ${id} not found (no data).`
+        );
+        return null;
+      }
 
-         // Fetch components and their associated item's master data
-         // We are NOT fetching 'quantity' directly from 'items' table here.
-         // The frontend (BundleFormPage) will handle fetching quantity_at_specific_location if needed.
-         const { data: components, error: compError } = await supabase
-             .from("bundle_components")
-             .select(`
+      // Fetch components and their associated item's master data
+      // We are NOT fetching 'quantity' directly from 'items' table here.
+      // The frontend (BundleFormPage) will handle fetching quantity_at_specific_location if needed.
+      const { data: components, error: compError } = await supabase
+        .from("bundle_components")
+        .select(
+          `
                  item_id,
                  quantity_in_bundle,
                  item:items!inner (id, name, sku, cost_price, category, description, variant)
-             `) // Select specific, existing columns from items
-             .eq("bundle_id", bundle.id);
+             `
+        ) // Select specific, existing columns from items
+        .eq("bundle_id", bundle.id);
 
-         if (compError) {
-             console.error(`[db.getBundleById] Error fetching components for bundle ID ${id}:`, compError);
-             throw compError;
-         }
+      if (compError) {
+        console.error(
+          `[db.getBundleById] Error fetching components for bundle ID ${id}:`,
+          compError
+        );
+        throw compError;
+      }
 
-         return { ...bundle, components: components || [] };
-
-     } catch (error) {
-         console.error(`[db.getBundleById] General error for bundle ID ${id}:`, error);
-         // Ensure the error is re-thrown so the IPC promise rejects correctly
-         throw error;
-     }
- },
+      return { ...bundle, components: components || [] };
+    } catch (error) {
+      console.error(
+        `[db.getBundleById] General error for bundle ID ${id}:`,
+        error
+      );
+      // Ensure the error is re-thrown so the IPC promise rejects correctly
+      throw error;
+    }
+  },
 
   async updateBundle(bundleId, bundleData) {
-      if (!supabase) return { success: false, message: "Database client not initialized." };
+    if (!supabase)
+      return { success: false, message: "Database client not initialized." };
 
-      console.log(`[db.updateBundle] Attempting to update bundle ID: ${bundleId} with data:`, JSON.stringify(bundleData, null, 2));
+    console.log(
+      `[db.updateBundle] Attempting to update bundle ID: ${bundleId} with data:`,
+      JSON.stringify(bundleData, null, 2)
+    );
 
-      try {
-          const { bundle_sku, name, description, price, is_active, components } = bundleData;
+    try {
+      const { bundle_sku, name, description, price, is_active, components } =
+        bundleData;
 
-          // 1. Update bundle master record
-          const { data: updatedBundleMaster, error: bundleMasterError } = await supabase
-              .from("bundles")
-              .update({ bundle_sku, name, description, price, is_active, updated_at: new Date() })
-              .eq("id", bundleId)
-              .select()
-              .single();
+      // 1. Update bundle master record
+      const { data: updatedBundleMaster, error: bundleMasterError } =
+        await supabase
+          .from("bundles")
+          .update({
+            bundle_sku,
+            name,
+            description,
+            price,
+            is_active,
+            updated_at: new Date(),
+          })
+          .eq("id", bundleId)
+          .select()
+          .single();
 
-          if (bundleMasterError) {
-              console.error(`[db.updateBundle] Error updating bundle master for ID ${bundleId}:`, bundleMasterError);
-              throw bundleMasterError;
-          }
-          if (!updatedBundleMaster) {
-               throw new Error(`Bundle master update for ID ${bundleId} did not return data.`);
-          }
-          console.log(`[db.updateBundle] Successfully updated bundle master for ID ${bundleId}.`);
-
-          // 2. Update components: Delete existing then re-insert
-          if (Array.isArray(components)) { // Ensure components is an array
-              console.log(`[db.updateBundle] Processing ${components.length} components for bundle ID ${bundleId}.`);
-
-              // Delete existing components
-              const { error: deleteError } = await supabase
-                  .from("bundle_components")
-                  .delete()
-                  .eq("bundle_id", bundleId);
-
-              if (deleteError) {
-                  console.error(`[db.updateBundle] Error deleting existing components for bundle ID ${bundleId}:`, deleteError);
-                  throw deleteError;
-              }
-              console.log(`[db.updateBundle] Successfully deleted existing components for bundle ID ${bundleId}.`);
-
-              // Insert new components if any are provided
-              if (components.length > 0) {
-                  const newComponentRecords = components.map(comp => {
-                      if (comp.item_id == null || comp.quantity_in_bundle == null || isNaN(Number(comp.quantity_in_bundle))) {
-                          console.error(`[db.updateBundle] Invalid component data skipped:`, comp);
-                          // Optionally throw an error to stop the whole process if strict validation is needed
-                          // For now, we'll log and it will be filtered out by a check below if it results in an invalid record
-                          return null;
-                      }
-                      return {
-                          bundle_id: bundleId,
-                          item_id: comp.item_id,
-                          quantity_in_bundle: Number(comp.quantity_in_bundle),
-                      };
-                  }).filter(record => record !== null); // Filter out any nulls from invalid data
-
-                  if (newComponentRecords.length > 0) {
-                      console.log(`[db.updateBundle] Inserting ${newComponentRecords.length} new component records for bundle ID ${bundleId}:`, newComponentRecords);
-                      const { error: insertCompError } = await supabase
-                          .from("bundle_components")
-                          .insert(newComponentRecords);
-
-                      if (insertCompError) {
-                          console.error(`[db.updateBundle] Error inserting new components for bundle ID ${bundleId}:`, insertCompError);
-                          throw insertCompError;
-                      }
-                      console.log(`[db.updateBundle] Successfully inserted ${newComponentRecords.length} new components for bundle ID ${bundleId}.`);
-                  } else {
-                       console.log(`[db.updateBundle] No valid new components to insert for bundle ID ${bundleId}.`);
-                  }
-              } else {
-                  console.log(`[db.updateBundle] No components in payload to insert for bundle ID ${bundleId} (components array was empty).`);
-              }
-          } else {
-              console.log(`[db.updateBundle] No 'components' array provided or it's not an array. Components not updated for bundle ID ${bundleId}.`);
-          }
-
-          return {
-              success: true,
-              bundle: updatedBundleMaster, // Return the updated master data
-              message: `Bundle '${updatedBundleMaster.name}' updated successfully.`,
-          };
-
-      } catch (error) {
-          console.error(`[db.updateBundle] Overall error for bundle ID ${bundleId}:`, error);
-          return {
-              success: false,
-              message: error.message || "Failed to update bundle.",
-          };
+      if (bundleMasterError) {
+        console.error(
+          `[db.updateBundle] Error updating bundle master for ID ${bundleId}:`,
+          bundleMasterError
+        );
+        throw bundleMasterError;
       }
+      if (!updatedBundleMaster) {
+        throw new Error(
+          `Bundle master update for ID ${bundleId} did not return data.`
+        );
+      }
+      console.log(
+        `[db.updateBundle] Successfully updated bundle master for ID ${bundleId}.`
+      );
+
+      // 2. Update components: Delete existing then re-insert
+      if (Array.isArray(components)) {
+        // Ensure components is an array
+        console.log(
+          `[db.updateBundle] Processing ${components.length} components for bundle ID ${bundleId}.`
+        );
+
+        // Delete existing components
+        const { error: deleteError } = await supabase
+          .from("bundle_components")
+          .delete()
+          .eq("bundle_id", bundleId);
+
+        if (deleteError) {
+          console.error(
+            `[db.updateBundle] Error deleting existing components for bundle ID ${bundleId}:`,
+            deleteError
+          );
+          throw deleteError;
+        }
+        console.log(
+          `[db.updateBundle] Successfully deleted existing components for bundle ID ${bundleId}.`
+        );
+
+        // Insert new components if any are provided
+        if (components.length > 0) {
+          const newComponentRecords = components
+            .map((comp) => {
+              if (
+                comp.item_id == null ||
+                comp.quantity_in_bundle == null ||
+                isNaN(Number(comp.quantity_in_bundle))
+              ) {
+                console.error(
+                  `[db.updateBundle] Invalid component data skipped:`,
+                  comp
+                );
+                // Optionally throw an error to stop the whole process if strict validation is needed
+                // For now, we'll log and it will be filtered out by a check below if it results in an invalid record
+                return null;
+              }
+              return {
+                bundle_id: bundleId,
+                item_id: comp.item_id,
+                quantity_in_bundle: Number(comp.quantity_in_bundle),
+              };
+            })
+            .filter((record) => record !== null); // Filter out any nulls from invalid data
+
+          if (newComponentRecords.length > 0) {
+            console.log(
+              `[db.updateBundle] Inserting ${newComponentRecords.length} new component records for bundle ID ${bundleId}:`,
+              newComponentRecords
+            );
+            const { error: insertCompError } = await supabase
+              .from("bundle_components")
+              .insert(newComponentRecords);
+
+            if (insertCompError) {
+              console.error(
+                `[db.updateBundle] Error inserting new components for bundle ID ${bundleId}:`,
+                insertCompError
+              );
+              throw insertCompError;
+            }
+            console.log(
+              `[db.updateBundle] Successfully inserted ${newComponentRecords.length} new components for bundle ID ${bundleId}.`
+            );
+          } else {
+            console.log(
+              `[db.updateBundle] No valid new components to insert for bundle ID ${bundleId}.`
+            );
+          }
+        } else {
+          console.log(
+            `[db.updateBundle] No components in payload to insert for bundle ID ${bundleId} (components array was empty).`
+          );
+        }
+      } else {
+        console.log(
+          `[db.updateBundle] No 'components' array provided or it's not an array. Components not updated for bundle ID ${bundleId}.`
+        );
+      }
+
+      return {
+        success: true,
+        bundle: updatedBundleMaster, // Return the updated master data
+        message: `Bundle '${updatedBundleMaster.name}' updated successfully.`,
+      };
+    } catch (error) {
+      console.error(
+        `[db.updateBundle] Overall error for bundle ID ${bundleId}:`,
+        error
+      );
+      return {
+        success: false,
+        message: error.message || "Failed to update bundle.",
+      };
+    }
   },
 
   async deleteBundle(bundleId) {
@@ -1453,16 +1748,38 @@ user:users ( id, username )
 
   // --- FUNCTION TO PROCESS A BUNDLE SALE (DEDUCT COMPONENTS) ---
   async processBundleSale(bundleId, saleQuantity = 1, saleContext = {}) {
-    // saleContext: { salesOrderId, salesOrderNumber, userId, usernameSnapshot }
+    // saleContext should now include: { userId, usernameSnapshot, storeLocationId }
     if (!supabase)
       return { success: false, message: "Database client not initialized." };
+
+    const { userId, usernameSnapshot, storeLocationId } = saleContext;
+
+    if (!storeLocationId) {
+      console.error(
+        "[db.processBundleSale] storeLocationId is missing in saleContext."
+      );
+      return {
+        success: false,
+        message:
+          "Internal Error: Store location ID for component deduction is missing.",
+      };
+    }
+
+    console.log(
+      `[db.processBundleSale] Processing sale for bundle ${bundleId}, qty ${saleQuantity}, from store ID ${storeLocationId}`
+    );
+
     try {
-      // 1. Fetch bundle components (including item details like name, sku for logging)
+      // 1. Fetch bundle components (including item details for stock check)
       const { data: components, error: compError } = await supabase
         .from("bundle_components")
         .select(
-          "item_id, quantity_in_bundle, item:items(id, name, sku, quantity)"
-        )
+          `
+                  item_id,
+                  quantity_in_bundle,
+                  item:items!inner (id, name, sku)
+              `
+        ) // No need to fetch total quantity here, we need quantity at specific store
         .eq("bundle_id", bundleId);
 
       if (compError) throw compError;
@@ -1473,62 +1790,89 @@ user:users ( id, username )
         };
       }
 
-      // 2. Check if all components have enough stock (as before)
-      // ... (stock check logic remains) ...
+      // 2. Check if all components have enough stock AT THE SPECIFIED storeLocationId
       const stockErrors = [];
+      const componentStockDetails = []; // To store fetched quantities
+
       for (const comp of components) {
         const requiredQtyForThisSale = comp.quantity_in_bundle * saleQuantity;
-        if (comp.item.quantity < requiredQtyForThisSale) {
+
+        // Fetch current quantity of this component AT THE storeLocationId
+        const { data: locQtyData, error: locQtyError } = await supabase
+          .from("item_location_quantities")
+          .select("quantity")
+          .eq("item_id", comp.item_id)
+          .eq("location_id", storeLocationId)
+          .single();
+
+        if (locQtyError && locQtyError.code !== "PGRST116") {
+          // PGRST116 means 0 rows, which is fine (means 0 stock)
+          console.error(
+            `[db.processBundleSale] Error fetching stock for component ${comp.item_id} at location ${storeLocationId}:`,
+            locQtyError
+          );
+          stockErrors.push(`Could not verify stock for ${comp.item.name}.`);
+          continue; // Skip to next component if stock check fails
+        }
+
+        const availableAtStore = locQtyData ? locQtyData.quantity : 0;
+        componentStockDetails.push({
+          ...comp,
+          available_at_store: availableAtStore,
+        }); // Store for deduction step
+
+        if (availableAtStore < requiredQtyForThisSale) {
           stockErrors.push(
-            `Not enough stock for component ${comp.item.name} (SKU: ${comp.item.sku}). Required: ${requiredQtyForThisSale}, Available: ${comp.item.quantity}`
+            `Not enough stock for component ${comp.item.name} (SKU: ${comp.item.sku}). Required: ${requiredQtyForThisSale}, Available at STORE: ${availableAtStore}`
           );
         }
       }
+
       if (stockErrors.length > 0) {
         return {
           success: false,
           message:
-            "Insufficient stock for bundle components: " +
+            "Insufficient stock for bundle components at STORE: " +
             stockErrors.join("; "),
         };
       }
 
-      // 3. Deduct stock for each component
+      // 3. Deduct stock for each component FROM THE SPECIFIED storeLocationId
       const adjustmentResults = [];
-      for (const comp of components) {
+      for (const comp of componentStockDetails) {
+        // Use componentStockDetails which has available_at_store
         const quantityToDeduct = comp.quantity_in_bundle * saleQuantity;
         const componentTransactionDetails = {
-          transactionType: "BUNDLE_COMPONENT_DEDUCTION", // Or 'SALE_BUNDLE_COMPONENT'
-          referenceId: String(saleContext.salesOrderId || bundleId),
+          transactionType: "BUNDLE_SALE_COMPONENT_DEDUCTION", // More specific type
+          referenceId: String(saleContext.salesOrderId || bundleId), // If part of a sales order, use that ID
           referenceType: saleContext.salesOrderId
-            ? "SALES_ORDER_BUNDLE_ITEM"
-            : "BUNDLE_SALE_DIRECT", // More specific type
-          userId: saleContext.userId,
-          usernameSnapshot: saleContext.usernameSnapshot,
-          notes: `Component: ${comp.item.name} (SKU: ${
+            ? "SALES_ORDER_BUNDLE"
+            : "DIRECT_BUNDLE_SALE",
+          userId: userId,
+          usernameSnapshot: usernameSnapshot,
+          notes: `Component deduction for Bundle: ${comp.item.name} (SKU: ${
             comp.item.sku || "N/A"
-          }) for Bundle ID ${bundleId}. Order Ref: ${
-            saleContext.salesOrderNumber || "N/A"
-          }`,
+          }) for Bundle ID ${bundleId}. Sale Qty: ${saleQuantity}. Deducted from Store ID: ${storeLocationId}.`,
         };
 
+        // Call adjustStockQuantity with the specific storeLocationId
         const result = await db.adjustStockQuantity(
-          comp.item.id,
-          -quantityToDeduct,
+          comp.item_id,
+          storeLocationId, // <<< Deduct from this specific location
+          -Math.abs(quantityToDeduct), // Ensure it's negative
           componentTransactionDetails
         );
-        adjustmentResults.push({ itemId: comp.item.id, ...result });
+        adjustmentResults.push({ itemId: comp.item_id, ...result });
       }
 
       const failedAdjustments = adjustmentResults.filter((res) => !res.success);
       if (failedAdjustments.length > 0) {
-        // This is a problem state: some components might have been deducted.
-        // A true transaction rollback would be needed for the entire sales order fulfillment.
-        // For now, we report the failure.
         console.error(
           "[db.processBundleSale] CRITICAL: Some component stock adjustments failed:",
-          failedAdjustments
+          failedAdjustments.map((f) => ({ item: f.itemId, msg: f.message }))
         );
+        // IMPORTANT: Implement rollback logic here if possible, or at least log very clearly.
+        // For now, returning an error.
         return {
           success: false,
           message:
@@ -1541,7 +1885,7 @@ user:users ( id, username )
 
       return {
         success: true,
-        message: "Bundle sale processed, component stock deducted.",
+        message: `Bundle sale processed (${saleQuantity} units). Component stock deducted from STORE.`,
       };
     } catch (error) {
       console.error("[db.processBundleSale] Error:", error);
@@ -1554,50 +1898,93 @@ user:users ( id, username )
   // --- END BUNDLE MANAGEMENT FUNCTIONS ---
   // --- SALES ORDER FUNCTIONS ---
   async createSalesOrder(orderData, orderItemsData) {
-      // ... (initial part)
-      try {
-          // ... (insert order and order_items) ...
+    // ... (initial part)
+    try {
+      // ... (insert order and order_items) ...
 
-          if (newOrder.status === "Fulfilled") {
-              console.log(`[db.createSalesOrder] Order ${newOrderId} (${newOrder.order_number || ''}) created as Fulfilled. Validating stock & processing deductions.`);
+      if (newOrder.status === "Fulfilled") {
+        console.log(
+          `[db.createSalesOrder] Order ${newOrderId} (${
+            newOrder.order_number || ""
+          }) created as Fulfilled. Validating stock & processing deductions.`
+        );
 
-              const performingUserInfo = await db.getUserInfoForLogById(newOrder.created_by_user_id);
-              const storeLocationId = await db.getStoreLocationId();
+        const performingUserInfo = await db.getUserInfoForLogById(
+          newOrder.created_by_user_id
+        );
+        const storeLocationId = await db.getStoreLocationId();
 
-              if (!storeLocationId) { /* ... handle error: STORE not found ... */ }
-              console.log(`[db.createSalesOrder] Using STORE Location ID for fulfillment: ${storeLocationId}`);
+        if (!storeLocationId) {
+          /* ... handle error: STORE not found ... */
+        }
+        console.log(
+          `[db.createSalesOrder] Using STORE Location ID for fulfillment: ${storeLocationId}`
+        );
 
-              // --- PRE-FULFILLMENT STOCK VALIDATION (similar to updateSalesOrderStatus) ---
-              const stockShortfalls = [];
-              for (const item of orderItemsData) { // Use orderItemsData as newOrder.order_items might not be populated yet
-                  const requiredQuantityForSale = parseInt(item.quantity, 10);
-                  if (item.item_id) {
-                      // ... (check stock for item.item_id at storeLocationId) ...
-                      // Example:
-                      const { data: locQtyData } = await supabase.from('item_location_quantities').select('quantity').eq('item_id', item.item_id).eq('location_id', storeLocationId).single();
-                      const currentStockAtStore = locQtyData ? locQtyData.quantity : 0;
-                      if (currentStockAtStore < requiredQuantityForSale) stockShortfalls.push(`${item.item_snapshot_name || `Item ID ${item.item_id}`}: Requires ${requiredQuantityForSale}, Store: ${currentStockAtStore}`);
-                  } else if (item.bundle_id) {
-                      // ... (check stock for all components of item.bundle_id at storeLocationId) ...
-                      // This logic would be similar to the bundle check in updateSalesOrderStatus
-                  }
-              }
-              if (stockShortfalls.length > 0) {
-                  const shortfallMessage = "Cannot create fulfilled order. Insufficient stock at STORE: " + stockShortfalls.join("; ");
-                  console.warn(`[db.createSalesOrder] Stock shortfall for new order ${newOrderId}: ${shortfallMessage}`);
-                  // IMPORTANT: Order & items are already created. Change status to Pending.
-                  await supabase.from("sales_orders").update({ status: 'Pending', notes: (newOrder.notes || '') + ` AUTO-PENDING: ${shortfallMessage}` }).eq("id", newOrderId);
-                  return { success: false, message: shortfallMessage, order: {...newOrder, status: 'Pending'}, isStockError: true };
-              }
-              // --- END PRE-FULFILLMENT STOCK VALIDATION ---
-
-              // If validation passes, proceed with deductions (as before, using storeLocationId)
-              for (const item of orderItemsData) {
-                  // ... (deduction logic using storeLocationId) ...
-              }
+        // --- PRE-FULFILLMENT STOCK VALIDATION (similar to updateSalesOrderStatus) ---
+        const stockShortfalls = [];
+        for (const item of orderItemsData) {
+          // Use orderItemsData as newOrder.order_items might not be populated yet
+          const requiredQuantityForSale = parseInt(item.quantity, 10);
+          if (item.item_id) {
+            // ... (check stock for item.item_id at storeLocationId) ...
+            // Example:
+            const { data: locQtyData } = await supabase
+              .from("item_location_quantities")
+              .select("quantity")
+              .eq("item_id", item.item_id)
+              .eq("location_id", storeLocationId)
+              .single();
+            const currentStockAtStore = locQtyData ? locQtyData.quantity : 0;
+            if (currentStockAtStore < requiredQuantityForSale)
+              stockShortfalls.push(
+                `${
+                  item.item_snapshot_name || `Item ID ${item.item_id}`
+                }: Requires ${requiredQuantityForSale}, Store: ${currentStockAtStore}`
+              );
+          } else if (item.bundle_id) {
+            // ... (check stock for all components of item.bundle_id at storeLocationId) ...
+            // This logic would be similar to the bundle check in updateSalesOrderStatus
           }
-          return { success: true, order: newOrder, message: `Sales Order ${newOrder.order_number || newOrder.id} created.` };
-      } catch (error) { /* ... */ }
+        }
+        if (stockShortfalls.length > 0) {
+          const shortfallMessage =
+            "Cannot create fulfilled order. Insufficient stock at STORE: " +
+            stockShortfalls.join("; ");
+          console.warn(
+            `[db.createSalesOrder] Stock shortfall for new order ${newOrderId}: ${shortfallMessage}`
+          );
+          // IMPORTANT: Order & items are already created. Change status to Pending.
+          await supabase
+            .from("sales_orders")
+            .update({
+              status: "Pending",
+              notes:
+                (newOrder.notes || "") + ` AUTO-PENDING: ${shortfallMessage}`,
+            })
+            .eq("id", newOrderId);
+          return {
+            success: false,
+            message: shortfallMessage,
+            order: { ...newOrder, status: "Pending" },
+            isStockError: true,
+          };
+        }
+        // --- END PRE-FULFILLMENT STOCK VALIDATION ---
+
+        // If validation passes, proceed with deductions (as before, using storeLocationId)
+        for (const item of orderItemsData) {
+          // ... (deduction logic using storeLocationId) ...
+        }
+      }
+      return {
+        success: true,
+        order: newOrder,
+        message: `Sales Order ${newOrder.order_number || newOrder.id} created.`,
+      };
+    } catch (error) {
+      /* ... */
+    }
   },
 
   async getSalesOrders(filters = {}) {
@@ -1675,144 +2062,217 @@ order_items:sales_order_items(*)
   },
 
   async updateSalesOrderStatus(orderId, newStatus, performingUserId) {
-      if (!supabase) return { success: false, message: "Database client not initialized." };
-      try {
-          const order = await db.getSalesOrderById(orderId);
-          if (!order) return { success: false, message: "Sales order not found." };
+    if (!supabase)
+      return { success: false, message: "Database client not initialized." };
+    try {
+      const order = await db.getSalesOrderById(orderId);
+      if (!order) return { success: false, message: "Sales order not found." };
 
-          if (order.status === "Fulfilled" && newStatus !== "Fulfilled") { /* ... */ }
-          if (order.status === "Cancelled" && newStatus !== "Cancelled") { /* ... */ }
+      if (order.status === "Fulfilled" && newStatus !== "Fulfilled") {
+        /* ... */
+      }
+      if (order.status === "Cancelled" && newStatus !== "Cancelled") {
+        /* ... */
+      }
 
-          const performingUserInfo = await db.getUserInfoForLogById(performingUserId);
+      const performingUserInfo = await db.getUserInfoForLogById(
+        performingUserId
+      );
 
-          if (newStatus === "Fulfilled" && order.status !== "Fulfilled") {
-              console.log(`[db.updateSalesOrderStatus] Order ${orderId} (${order.order_number || ''}) moving to Fulfilled. Validating stock and processing deductions.`);
+      if (newStatus === "Fulfilled" && order.status !== "Fulfilled") {
+        console.log(
+          `[db.updateSalesOrderStatus] Order ${orderId} (${
+            order.order_number || ""
+          }) moving to Fulfilled. Validating stock and processing deductions.`
+        );
 
-              const storeLocationId = await db.getStoreLocationId();
-              if (!storeLocationId) {
-                  console.error(`[db.updateSalesOrderStatus] CRITICAL: Default fulfillment location (STORE) not configured. Cannot fulfill order ${orderId}.`);
-                  throw new Error("Default fulfillment location (STORE) not configured. Order cannot be fulfilled.");
-              }
-              console.log(`[db.updateSalesOrderStatus] Using STORE Location ID for fulfillment: ${storeLocationId}`);
+        const storeLocationId = await db.getStoreLocationId();
+        if (!storeLocationId) {
+          console.error(
+            `[db.updateSalesOrderStatus] CRITICAL: Default fulfillment location (STORE) not configured. Cannot fulfill order ${orderId}.`
+          );
+          throw new Error(
+            "Default fulfillment location (STORE) not configured. Order cannot be fulfilled."
+          );
+        }
+        console.log(
+          `[db.updateSalesOrderStatus] Using STORE Location ID for fulfillment: ${storeLocationId}`
+        );
 
-              // --- BEGIN PRE-FULFILLMENT STOCK VALIDATION ---
-              const stockShortfalls = [];
-              for (const item of order.order_items) {
-                  const requiredQuantityForSale = parseInt(item.quantity, 10);
+        // --- BEGIN PRE-FULFILLMENT STOCK VALIDATION ---
+        const stockShortfalls = [];
+        for (const item of order.order_items) {
+          const requiredQuantityForSale = parseInt(item.quantity, 10);
 
-                  if (item.item_id) { // Individual item
-                      const { data: locQtyData, error: qtyError } = await supabase
-                          .from('item_location_quantities')
-                          .select('quantity')
-                          .eq('item_id', item.item_id)
-                          .eq('location_id', storeLocationId)
-                          .single();
-
-                      if (qtyError && qtyError.code !== 'PGRST116') throw qtyError;
-                      const currentStockAtStore = locQtyData ? locQtyData.quantity : 0;
-
-                      if (currentStockAtStore < requiredQuantityForSale) {
-                          stockShortfalls.push(
-                              `${item.item_snapshot_name || `Item ID ${item.item_id}`}: Requires ${requiredQuantityForSale}, Available at STORE: ${currentStockAtStore}`
-                          );
-                      }
-                  } else if (item.bundle_id) { // Bundle
-                      const { data: components, error: compError } = await supabase
-                          .from("bundle_components")
-                          .select("item_id, quantity_in_bundle, item:items!inner(id, name, sku)")
-                          .eq("bundle_id", item.bundle_id);
-
-                      if (compError) throw compError;
-                      if (!components || components.length === 0) {
-                          stockShortfalls.push(`Bundle ${item.item_snapshot_name || `ID ${item.bundle_id}`} has no components defined.`);
-                          continue;
-                      }
-
-                      for (const comp of components) {
-                          const requiredCompQtyForBundleSale = comp.quantity_in_bundle * requiredQuantityForSale;
-                          const { data: compLocQtyData, error: compQtyErr } = await supabase
-                              .from('item_location_quantities')
-                              .select('quantity')
-                              .eq('item_id', comp.item_id)
-                              .eq('location_id', storeLocationId)
-                              .single();
-
-                          if (compQtyErr && compQtyErr.code !== 'PGRST116') throw compQtyErr;
-                          const currentCompStockAtStore = compLocQtyData ? compLocQtyData.quantity : 0;
-
-                          if (currentCompStockAtStore < requiredCompQtyForBundleSale) {
-                              stockShortfalls.push(
-                                  `Component ${comp.item.name} (for Bundle ${item.item_snapshot_name}): Requires ${requiredCompQtyForBundleSale}, Available at STORE: ${currentCompStockAtStore}`
-                              );
-                          }
-                      }
-                  }
-              }
-
-              if (stockShortfalls.length > 0) {
-                  const shortfallMessage = "Cannot fulfill order. Insufficient stock at STORE for: " + stockShortfalls.join("; ");
-                  console.warn(`[db.updateSalesOrderStatus] Stock shortfall for order ${orderId}: ${shortfallMessage}`);
-                  return { success: false, message: shortfallMessage, isStockError: true }; // Add flag for frontend
-              }
-              // --- END PRE-FULFILLMENT STOCK VALIDATION ---
-
-              // If stock validation passes, proceed with deductions
-              for (const item of order.order_items) {
-                  let deductionResult;
-                  const commonTransactionNotes = `Sale for Order #${order.order_number || order.id}, Item: ${item.item_snapshot_name || (item.item_id ? `Item ID ${item.item_id}` : `Bundle ID ${item.bundle_id}`)} from STORE (LocID: ${storeLocationId})`;
-
-                  if (item.item_id) {
-                      const transactionDetails = { /* ... as before ... */
-                          transactionType: 'SALE_ITEM_DEDUCTION',
-                          referenceId: String(order.id),
-                          referenceType: 'SALES_ORDER_ITEM',
-                          userId: performingUserId,
-                          usernameSnapshot: performingUserInfo.username,
-                          notes: commonTransactionNotes
-                      };
-                      console.log(`[db.updateSalesOrderStatus] Deducting item: ID=${item.item_id}, Qty=${-Math.abs(item.quantity)}, LocID=${storeLocationId}`);
-                      deductionResult = await db.adjustStockQuantity(
-                          item.item_id,
-                          storeLocationId, // Use the validated storeLocationId
-                          -Math.abs(item.quantity),
-                          transactionDetails
-                      );
-                  } else if (item.bundle_id) {
-                      const bundleSaleContext = {
-                          salesOrderId: order.id,
-                          salesOrderNumber: order.order_number || `SO-${order.id}`,
-                          userId: performingUserId,
-                          usernameSnapshot: performingUserInfo.username,
-                          fulfillmentLocationId: storeLocationId // Pass it down
-                      };
-                      console.log(`[db.updateSalesOrderStatus] Processing bundle sale: ID=${item.bundle_id}, Qty=${item.quantity}, Context with LocID=${storeLocationId}`);
-                      deductionResult = await db.processBundleSale(item.bundle_id, item.quantity, bundleSaleContext);
-                  }
-
-                  if (!deductionResult || !deductionResult.success) {
-                      // This should ideally not happen if pre-validation was correct, but as a safeguard:
-                      const productName = item.item_snapshot_name || (item.item_id ? `Item ID ${item.item_id}` : `Bundle ID ${item.bundle_id}`);
-                      console.error(`[db.updateSalesOrderStatus] STOCK DEDUCTION FAILED (POST-VALIDATION) for ${productName} in order ${orderId}. Error: ${deductionResult?.message}. THIS INDICATES A POTENTIAL RACE CONDITION OR LOGIC FLAW.`);
-                      throw new Error(`Critical error: Stock deduction failed for ${productName} after validation. Fulfillment incomplete. Error: ${deductionResult?.message}`);
-                  }
-              }
-              console.log(`[db.updateSalesOrderStatus] Stock deductions complete for order ${orderId}.`);
-          }
-
-          // Update order status in DB
-          const { data: updatedOrder, error } = await supabase
-              .from("sales_orders")
-              .update({ status: newStatus, updated_at: new Date() })
-              .eq("id", orderId)
-              .select()
+          if (item.item_id) {
+            // Individual item
+            const { data: locQtyData, error: qtyError } = await supabase
+              .from("item_location_quantities")
+              .select("quantity")
+              .eq("item_id", item.item_id)
+              .eq("location_id", storeLocationId)
               .single();
 
-          if (error) throw error;
-          return { success: true, order: updatedOrder, message: `Sales Order status updated to ${newStatus}.` };
-      } catch (error) {
-          console.error("[db.updateSalesOrderStatus] Error:", error);
-          return { success: false, message: error.message || "Failed to update sales order status." };
+            if (qtyError && qtyError.code !== "PGRST116") throw qtyError;
+            const currentStockAtStore = locQtyData ? locQtyData.quantity : 0;
+
+            if (currentStockAtStore < requiredQuantityForSale) {
+              stockShortfalls.push(
+                `${
+                  item.item_snapshot_name || `Item ID ${item.item_id}`
+                }: Requires ${requiredQuantityForSale}, Available at STORE: ${currentStockAtStore}`
+              );
+            }
+          } else if (item.bundle_id) {
+            // Bundle
+            const { data: components, error: compError } = await supabase
+              .from("bundle_components")
+              .select(
+                "item_id, quantity_in_bundle, item:items!inner(id, name, sku)"
+              )
+              .eq("bundle_id", item.bundle_id);
+
+            if (compError) throw compError;
+            if (!components || components.length === 0) {
+              stockShortfalls.push(
+                `Bundle ${
+                  item.item_snapshot_name || `ID ${item.bundle_id}`
+                } has no components defined.`
+              );
+              continue;
+            }
+
+            for (const comp of components) {
+              const requiredCompQtyForBundleSale =
+                comp.quantity_in_bundle * requiredQuantityForSale;
+              const { data: compLocQtyData, error: compQtyErr } = await supabase
+                .from("item_location_quantities")
+                .select("quantity")
+                .eq("item_id", comp.item_id)
+                .eq("location_id", storeLocationId)
+                .single();
+
+              if (compQtyErr && compQtyErr.code !== "PGRST116")
+                throw compQtyErr;
+              const currentCompStockAtStore = compLocQtyData
+                ? compLocQtyData.quantity
+                : 0;
+
+              if (currentCompStockAtStore < requiredCompQtyForBundleSale) {
+                stockShortfalls.push(
+                  `Component ${comp.item.name} (for Bundle ${item.item_snapshot_name}): Requires ${requiredCompQtyForBundleSale}, Available at STORE: ${currentCompStockAtStore}`
+                );
+              }
+            }
+          }
+        }
+
+        if (stockShortfalls.length > 0) {
+          const shortfallMessage =
+            "Cannot fulfill order. Insufficient stock at STORE for: " +
+            stockShortfalls.join("; ");
+          console.warn(
+            `[db.updateSalesOrderStatus] Stock shortfall for order ${orderId}: ${shortfallMessage}`
+          );
+          return {
+            success: false,
+            message: shortfallMessage,
+            isStockError: true,
+          }; // Add flag for frontend
+        }
+        // --- END PRE-FULFILLMENT STOCK VALIDATION ---
+
+        // If stock validation passes, proceed with deductions
+        for (const item of order.order_items) {
+          let deductionResult;
+          const commonTransactionNotes = `Sale for Order #${
+            order.order_number || order.id
+          }, Item: ${
+            item.item_snapshot_name ||
+            (item.item_id
+              ? `Item ID ${item.item_id}`
+              : `Bundle ID ${item.bundle_id}`)
+          } from STORE (LocID: ${storeLocationId})`;
+
+          if (item.item_id) {
+            const transactionDetails = {
+              /* ... as before ... */ transactionType: "SALE_ITEM_DEDUCTION",
+              referenceId: String(order.id),
+              referenceType: "SALES_ORDER_ITEM",
+              userId: performingUserId,
+              usernameSnapshot: performingUserInfo.username,
+              notes: commonTransactionNotes,
+            };
+            console.log(
+              `[db.updateSalesOrderStatus] Deducting item: ID=${
+                item.item_id
+              }, Qty=${-Math.abs(item.quantity)}, LocID=${storeLocationId}`
+            );
+            deductionResult = await db.adjustStockQuantity(
+              item.item_id,
+              storeLocationId, // Use the validated storeLocationId
+              -Math.abs(item.quantity),
+              transactionDetails
+            );
+          } else if (item.bundle_id) {
+            const bundleSaleContext = {
+              salesOrderId: order.id,
+              salesOrderNumber: order.order_number || `SO-${order.id}`,
+              userId: performingUserId,
+              usernameSnapshot: performingUserInfo.username,
+              fulfillmentLocationId: storeLocationId, // Pass it down
+            };
+            console.log(
+              `[db.updateSalesOrderStatus] Processing bundle sale: ID=${item.bundle_id}, Qty=${item.quantity}, Context with LocID=${storeLocationId}`
+            );
+            deductionResult = await db.processBundleSale(
+              item.bundle_id,
+              item.quantity,
+              bundleSaleContext
+            );
+          }
+
+          if (!deductionResult || !deductionResult.success) {
+            // This should ideally not happen if pre-validation was correct, but as a safeguard:
+            const productName =
+              item.item_snapshot_name ||
+              (item.item_id
+                ? `Item ID ${item.item_id}`
+                : `Bundle ID ${item.bundle_id}`);
+            console.error(
+              `[db.updateSalesOrderStatus] STOCK DEDUCTION FAILED (POST-VALIDATION) for ${productName} in order ${orderId}. Error: ${deductionResult?.message}. THIS INDICATES A POTENTIAL RACE CONDITION OR LOGIC FLAW.`
+            );
+            throw new Error(
+              `Critical error: Stock deduction failed for ${productName} after validation. Fulfillment incomplete. Error: ${deductionResult?.message}`
+            );
+          }
+        }
+        console.log(
+          `[db.updateSalesOrderStatus] Stock deductions complete for order ${orderId}.`
+        );
       }
+
+      // Update order status in DB
+      const { data: updatedOrder, error } = await supabase
+        .from("sales_orders")
+        .update({ status: newStatus, updated_at: new Date() })
+        .eq("id", orderId)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return {
+        success: true,
+        order: updatedOrder,
+        message: `Sales Order status updated to ${newStatus}.`,
+      };
+    } catch (error) {
+      console.error("[db.updateSalesOrderStatus] Error:", error);
+      return {
+        success: false,
+        message: error.message || "Failed to update sales order status.",
+      };
+    }
   },
 
   // Function to generate a unique (enough) order number - can be improved
@@ -1830,35 +2290,44 @@ order_items:sales_order_items(*)
   },
   // --- NEW STOCK TRANSFER FUNCTION ---
   async createStockTransferAndAdjustInventory(transferDetails) {
-      // transferDetails: { itemId, quantityTransferred, sourceLocationId, destinationLocationId,
-      //                    sourceLocationName, destinationLocationName, notes, referenceNumber, userId, usernameSnapshot }
-      if (!supabase) return { success: false, message: "Database client not initialized." };
+    // transferDetails: { itemId, quantityTransferred, sourceLocationId, destinationLocationId,
+    //                    sourceLocationName, destinationLocationName, notes, referenceNumber, userId, usernameSnapshot }
+    if (!supabase)
+      return { success: false, message: "Database client not initialized." };
 
-      console.log("[db.createStockTransferAndAdjustInventory] Details:", transferDetails);
+    console.log(
+      "[db.createStockTransferAndAdjustInventory] Details:",
+      transferDetails
+    );
 
-      try {
-        // 1. Validate stock at source location
-        //    Fetch current quantity of the item AT THE SOURCE LOCATION
-        const { data: sourceStock, error: sourceStockError } = await supabase
-          .from('item_location_quantities')
-          .select('quantity')
-          .eq('item_id', transferDetails.itemId)
-          .eq('location_id', transferDetails.sourceLocationId)
-          .single();
+    try {
+      // 1. Validate stock at source location
+      //    Fetch current quantity of the item AT THE SOURCE LOCATION
+      const { data: sourceStock, error: sourceStockError } = await supabase
+        .from("item_location_quantities")
+        .select("quantity")
+        .eq("item_id", transferDetails.itemId)
+        .eq("location_id", transferDetails.sourceLocationId)
+        .single();
 
-        if (sourceStockError && sourceStockError.code !== 'PGRST116') { // PGRST116 is " esattamente una riga attesa" (exactly one row expected) - means no stock record yet
-            throw sourceStockError;
-        }
-        const currentQtyAtSource = sourceStock ? sourceStock.quantity : 0;
+      if (sourceStockError && sourceStockError.code !== "PGRST116") {
+        // PGRST116 is " esattamente una riga attesa" (exactly one row expected) - means no stock record yet
+        throw sourceStockError;
+      }
+      const currentQtyAtSource = sourceStock ? sourceStock.quantity : 0;
 
-        if (currentQtyAtSource < transferDetails.quantityTransferred) {
-          return { success: false, message: `Insufficient stock at ${transferDetails.sourceLocationName}. Available: ${currentQtyAtSource}, Trying to transfer: ${transferDetails.quantityTransferred}` };
-        }
+      if (currentQtyAtSource < transferDetails.quantityTransferred) {
+        return {
+          success: false,
+          message: `Insufficient stock at ${transferDetails.sourceLocationName}. Available: ${currentQtyAtSource}, Trying to transfer: ${transferDetails.quantityTransferred}`,
+        };
+      }
 
-        // 2. Create the stock_transfers record
-        const { data: newTransfer, error: transferError } = await supabase
-          .from('stock_transfers')
-          .insert([{
+      // 2. Create the stock_transfers record
+      const { data: newTransfer, error: transferError } = await supabase
+        .from("stock_transfers")
+        .insert([
+          {
             item_id: transferDetails.itemId,
             quantity_transferred: transferDetails.quantityTransferred,
             // Store location IDs if your stock_transfers table uses IDs. If names, use names.
@@ -1867,58 +2336,75 @@ order_items:sales_order_items(*)
             source_location: transferDetails.sourceLocationName,
             destination_location: transferDetails.destinationLocationName,
             notes: transferDetails.notes,
-            reference_number: transferDetails.referenceNumber || `TR-${Date.now()}`,
+            reference_number:
+              transferDetails.referenceNumber || `TR-${Date.now()}`,
             processed_by_user_id: transferDetails.userId,
-            username_snapshot: transferDetails.usernameSnapshot
-          }])
-          .select()
-          .single();
+            username_snapshot: transferDetails.usernameSnapshot,
+          },
+        ])
+        .select()
+        .single();
 
-        if (transferError) throw transferError;
-        if (!newTransfer) throw new Error("Stock transfer record creation failed.");
+      if (transferError) throw transferError;
+      if (!newTransfer)
+        throw new Error("Stock transfer record creation failed.");
 
-        // 3.a. Deduct from source location
-        const deductionContext = {
-          transactionType: 'STOCK_TRANSFER_OUT',
-          referenceId: String(newTransfer.id),
-          referenceType: 'STOCK_TRANSFER',
-          userId: transferDetails.userId,
-          usernameSnapshot: transferDetails.usernameSnapshot,
-          notes: `Transfer Out to ${transferDetails.destinationLocationName}. Ref ID: ${newTransfer.id}`
-        };
-        const deductionResult = await db.adjustStockQuantity(
-          transferDetails.itemId,
-          transferDetails.sourceLocationId, // Use sourceLocationId
-          -Math.abs(transferDetails.quantityTransferred),
-          deductionContext
+      // 3.a. Deduct from source location
+      const deductionContext = {
+        transactionType: "STOCK_TRANSFER_OUT",
+        referenceId: String(newTransfer.id),
+        referenceType: "STOCK_TRANSFER",
+        userId: transferDetails.userId,
+        usernameSnapshot: transferDetails.usernameSnapshot,
+        notes: `Transfer Out to ${transferDetails.destinationLocationName}. Ref ID: ${newTransfer.id}`,
+      };
+      const deductionResult = await db.adjustStockQuantity(
+        transferDetails.itemId,
+        transferDetails.sourceLocationId, // Use sourceLocationId
+        -Math.abs(transferDetails.quantityTransferred),
+        deductionContext
+      );
+      if (!deductionResult.success) {
+        /* ... error handling ... */ throw new Error(
+          `Deduction failed: ${deductionResult.message}`
         );
-        if (!deductionResult.success) { /* ... error handling ... */ throw new Error(`Deduction failed: ${deductionResult.message}`); }
-
-        // 3.b. Add to destination location
-        // The item's master record in 'items' table is NOT changed for its 'location'
-        const additionContext = {
-          transactionType: 'STOCK_TRANSFER_IN',
-          referenceId: String(newTransfer.id),
-          referenceType: 'STOCK_TRANSFER',
-          userId: transferDetails.userId,
-          usernameSnapshot: transferDetails.usernameSnapshot,
-          notes: `Transfer In from ${transferDetails.sourceLocationName}. Ref ID: ${newTransfer.id}`
-        };
-        const additionResult = await db.adjustStockQuantity(
-          transferDetails.itemId,
-          transferDetails.destinationLocationId, // Use destinationLocationId
-          Math.abs(transferDetails.quantityTransferred),
-          additionContext
-        );
-        if (!additionResult.success) { /* ... error handling ... */ throw new Error(`Addition failed: ${additionResult.message}`); }
-
-        return { success: true, transfer: newTransfer, message: "Stock transferred successfully." };
-      } catch (error) {
-        console.error('[db.createStockTransferAndAdjustInventory] Error:', error);
-        return { success: false, message: error.message || "Failed to process stock transfer." };
       }
-    },
 
+      // 3.b. Add to destination location
+      // The item's master record in 'items' table is NOT changed for its 'location'
+      const additionContext = {
+        transactionType: "STOCK_TRANSFER_IN",
+        referenceId: String(newTransfer.id),
+        referenceType: "STOCK_TRANSFER",
+        userId: transferDetails.userId,
+        usernameSnapshot: transferDetails.usernameSnapshot,
+        notes: `Transfer In from ${transferDetails.sourceLocationName}. Ref ID: ${newTransfer.id}`,
+      };
+      const additionResult = await db.adjustStockQuantity(
+        transferDetails.itemId,
+        transferDetails.destinationLocationId, // Use destinationLocationId
+        Math.abs(transferDetails.quantityTransferred),
+        additionContext
+      );
+      if (!additionResult.success) {
+        /* ... error handling ... */ throw new Error(
+          `Addition failed: ${additionResult.message}`
+        );
+      }
+
+      return {
+        success: true,
+        transfer: newTransfer,
+        message: "Stock transferred successfully.",
+      };
+    } catch (error) {
+      console.error("[db.createStockTransferAndAdjustInventory] Error:", error);
+      return {
+        success: false,
+        message: error.message || "Failed to process stock transfer.",
+      };
+    }
+  },
 
   async getStockTransfers(filters = {}) {
     if (!supabase)
@@ -1947,205 +2433,407 @@ user:users (id, username)
     }
   },
 
-  async archiveItem(itemId, archiveStatus = true) { // New function, archiveStatus defaults to true
-      if (!supabase) return { success: false, message: "Database client not initialized." };
-      try {
-        const { data, error } = await supabase
-          .from('items')
-          .update({ is_archived: archiveStatus, updated_at: new Date() }) // Set is_archived and update timestamp
-          .eq('id', itemId)
-          .select() // Optionally select the updated item back
-          .single(); // Expecting a single item
+  async archiveItem(itemId, archiveStatus = true) {
+    // New function, archiveStatus defaults to true
+    if (!supabase)
+      return { success: false, message: "Database client not initialized." };
+    try {
+      const { data, error } = await supabase
+        .from("items")
+        .update({ is_archived: archiveStatus, updated_at: new Date() }) // Set is_archived and update timestamp
+        .eq("id", itemId)
+        .select() // Optionally select the updated item back
+        .single(); // Expecting a single item
 
-        if (error) {
-          console.error(`Error ${archiveStatus ? 'archiving' : 'unarchiving'} item in Supabase:`, error);
-          throw error;
-        }
-        return { success: true, item: data, message: `Item ${archiveStatus ? 'archived' : 'unarchived'} successfully.` };
-      } catch (error) {
-        console.error(`Error in archiveItem (ID: ${itemId}):`, error);
-        return { success: false, message: error.message || `Failed to ${archiveStatus ? 'archive' : 'unarchive'} item.` };
+      if (error) {
+        console.error(
+          `Error ${
+            archiveStatus ? "archiving" : "unarchiving"
+          } item in Supabase:`,
+          error
+        );
+        throw error;
       }
-    },
-    async getInventoryByStorageLocation() {
-        if (!supabase) return { success: false, message: "Database client not initialized.", data: [] };
-        try {
-            const { data, error } = await supabase.rpc('get_inventory_summary_by_storage');
-            if (error) {
-                console.error('[db.getInventoryByStorageLocation] RPC error:', error);
-                return { success: false, message: error.message || 'RPC error fetching storage summary.', data: [] };
+      return {
+        success: true,
+        item: data,
+        message: `Item ${
+          archiveStatus ? "archived" : "unarchived"
+        } successfully.`,
+      };
+    } catch (error) {
+      console.error(`Error in archiveItem (ID: ${itemId}):`, error);
+      return {
+        success: false,
+        message:
+          error.message ||
+          `Failed to ${archiveStatus ? "archive" : "unarchive"} item.`,
+      };
+    }
+  },
+  async getInventoryByStorageLocation() {
+    if (!supabase)
+      return {
+        success: false,
+        message: "Database client not initialized.",
+        data: [],
+      };
+    try {
+      const { data, error } = await supabase.rpc(
+        "get_inventory_summary_by_storage"
+      );
+      if (error) {
+        console.error("[db.getInventoryByStorageLocation] RPC error:", error);
+        return {
+          success: false,
+          message: error.message || "RPC error fetching storage summary.",
+          data: [],
+        };
+      }
+      return { success: true, data: data || [] };
+    } catch (error) {
+      console.error("[db.getInventoryByStorageLocation] General error:", error);
+      return {
+        success: false,
+        message: error.message || "Failed to get storage breakdown.",
+        data: [],
+      };
+    }
+  },
+
+  // --- NEW ANALYTICS DB FUNCTIONS ---
+
+  async getSalesSummary(period = "last30days") {
+    if (!supabase)
+      return { success: false, message: "DB client not init.", summary: null };
+    try {
+      const { startDate, endDate } = getDateRange(period);
+
+      // Fetch fulfilled orders within the period
+      const { data, error } = await supabase
+        .from("sales_orders")
+        .select("total_amount")
+        .eq("status", "Fulfilled")
+        .gte("order_date", startDate) // Assuming order_date reflects the sale date
+        .lte("order_date", endDate);
+
+      if (error) throw error;
+
+      const numberOfOrders = data ? data.length : 0;
+      const totalSalesValue = (data || []).reduce(
+        (sum, order) => sum + (Number(order.total_amount) || 0),
+        0
+      );
+      const averageOrderValue =
+        numberOfOrders > 0 ? totalSalesValue / numberOfOrders : 0;
+
+      return {
+        success: true,
+        summary: {
+          totalSalesValue,
+          numberOfOrders,
+          averageOrderValue,
+        },
+      };
+    } catch (error) {
+      console.error("[db.getSalesSummary] Error:", error);
+      return { success: false, message: error.message, summary: null };
+    }
+  },
+
+  async getTopSellingItems(period = "last30days", limit = 5) {
+    if (!supabase)
+      return { success: false, message: "DB client not init.", items: [] };
+    try {
+      const { startDate, endDate } = getDateRange(period);
+
+      // This query is a bit more complex as it needs to sum quantities from sales_order_items
+      // and join with items/bundles. An RPC would be more efficient.
+      // Simplified version: Sum quantities and values from sales_order_items.
+      // You'll need to enhance this to get item/bundle names.
+
+      // Fetch fulfilled sales order IDs within the period
+      const { data: fulfilledOrders, error: orderError } = await supabase
+        .from("sales_orders")
+        .select("id")
+        .eq("status", "Fulfilled")
+        .gte("order_date", startDate)
+        .lte("order_date", endDate);
+
+      if (orderError) throw orderError;
+      if (!fulfilledOrders || fulfilledOrders.length === 0) {
+        return { success: true, items: [] }; // No fulfilled orders, so no top items
+      }
+
+      const fulfilledOrderIds = fulfilledOrders.map((o) => o.id);
+
+      const { data: topItems, error: rpcError } = await supabase.rpc(
+        "get_top_selling_products_rpc",
+        {
+          start_date_param: startDate,
+          end_date_param: endDate,
+          result_limit: limit,
+        }
+      );
+
+      if (rpcError) {
+        console.error("[db.getTopSellingItems] RPC Error:", rpcError);
+        throw rpcError;
+      }
+
+      return { success: true, items: topItems || [] };
+    } catch (error) {
+      console.error("[db.getTopSellingItems] Error:", error);
+      return { success: false, message: error.message, items: [] };
+    }
+  },
+
+  async getSalesByStatus(period = "last30days") {
+    if (!supabase)
+      return { success: false, message: "DB client not init.", data: [] };
+    try {
+      const { startDate, endDate } = getDateRange(period);
+
+      const { data, error } = await supabase.rpc(
+        "get_sales_summary_by_status_rpc",
+        {
+          start_date_param: startDate,
+          end_date_param: endDate,
+        }
+      );
+
+      if (error) {
+        console.error("[db.getSalesByStatus] RPC Error:", error);
+        throw error;
+      }
+      // The RPC directly returns data in [{status: 'X', count: N}, ...] format
+      return { success: true, data: data || [] };
+    } catch (error) {
+      console.error("[db.getSalesByStatus] Error:", error);
+      return { success: false, message: error.message, data: [] };
+    }
+  },
+  async getStoreLocationId() {
+    if (!supabase) {
+      console.error("[db.getStoreLocationId] Supabase client not initialized.");
+      return null; // Or throw an error
+    }
+    try {
+      // Assuming your main store location is named 'STORE'
+      // Make sure this name matches exactly what's in your 'storage_locations' table.
+      const storeLocationName = "STORE";
+
+      const { data, error } = await supabase
+        .from("storage_locations")
+        .select("id")
+        .eq("name", storeLocationName) // Case-sensitive match by default
+        .eq("is_active", true) // Ensure the store location is active
+        .single(); // Expect only one 'STORE' location
+
+      if (error) {
+        // PGRST116 means "exactly one row expected, but 0 or more than 1 were found"
+        // If 0 rows, it means 'STORE' location doesn't exist or isn't active.
+        if (error.code === "PGRST116") {
+          console.warn(
+            `[db.getStoreLocationId] Active storage location named "${storeLocationName}" not found.`
+          );
+          return null;
+        }
+        // For other errors
+        console.error(
+          `[db.getStoreLocationId] Error fetching ID for location "${storeLocationName}":`,
+          error
+        );
+        throw error; // Re-throw other errors
+      }
+
+      if (!data) {
+        console.warn(
+          `[db.getStoreLocationId] Active storage location named "${storeLocationName}" not found (data is null).`
+        );
+        return null;
+      }
+
+      console.log(
+        `[db.getStoreLocationId] Found ID for "${storeLocationName}": ${data.id}`
+      );
+      return data.id;
+    } catch (err) {
+      console.error("[db.getStoreLocationId] Unexpected error:", err);
+      return null; // Return null on unexpected errors
+    }
+  },
+
+  async getStorageLocations() {
+    if (!supabase)
+      return {
+        success: false,
+        message: "Database client not initialized.",
+        locations: [],
+      };
+    try {
+      const { data, error } = await supabase
+        .from("storage_locations")
+        .select("id, name, description")
+        .eq("is_active", true)
+        .order("name", { ascending: true });
+
+      if (error) throw error;
+      return { success: true, locations: data || [] };
+    } catch (error) {
+      console.error("[db.getStorageLocations] Error:", error);
+      return { success: false, message: error.message, locations: [] };
+    }
+  },
+
+  async getDetailedStockReport(filters = {}) {
+    // filters: { category, locationId, itemId, lowStockOnly (boolean) }
+    if (!supabase)
+      return { success: false, message: "DB client not init.", data: [] };
+    try {
+      // This will call the RPC we defined for the ReportsPage, it's reusable.
+      // If you haven't created it yet, refer to the previous response for its SQL.
+      // Ensure get_current_stock_report_data can handle all these filters.
+      // For simplicity, let's assume it takes category and locationId for now.
+      // We can enhance the RPC later if needed for itemId or lowStockOnly.
+
+      // For now, let's make a direct query here if the RPC is too specific
+      // This query is similar to the RPC 'get_current_stock_report_data'
+      let query = supabase
+        .from("items")
+        .select(
+          `
+                     id, sku, name, variant, category, cost_price, low_stock_threshold,
+                     item_location_quantities!inner (
+                         quantity,
+                         storage_locations!inner (id, name)
+                     )
+                 `
+        )
+        .eq("is_archived", false);
+
+      if (filters.category) {
+        query = query.eq("category", filters.category);
+      }
+      if (filters.locationId) {
+        query = query.eq(
+          "item_location_quantities.location_id",
+          filters.locationId
+        );
+      }
+      if (filters.itemId) {
+        query = query.eq("id", filters.itemId);
+      }
+      // For lowStockOnly, we might need a more complex query or post-filtering
+      // if comparing against item.low_stock_threshold vs item_location_quantities.quantity
+
+      const { data, error } = await query
+        .order("name")
+        .order("name", {
+          foreignTable: "item_location_quantities.storage_locations",
+        });
+
+      if (error) throw error;
+
+      // Transform data to a flat structure suitable for table display
+      const flatData = [];
+      (data || []).forEach((item) => {
+        if (
+          item.item_location_quantities &&
+          item.item_location_quantities.length > 0
+        ) {
+          item.item_location_quantities.forEach((ilq) => {
+            if (
+              filters.lowStockOnly &&
+              ilq.quantity >= (item.low_stock_threshold || 0)
+            ) {
+              // Skip if not low stock and filter is active
+            } else {
+              flatData.push({
+                item_id: item.id,
+                sku: item.sku,
+                item_name: item.name,
+                variant: item.variant,
+                category: item.category,
+                location_id: ilq.storage_locations.id,
+                location_name: ilq.storage_locations.name,
+                quantity_at_location: ilq.quantity,
+                cost_price: item.cost_price,
+                stock_value_at_location: ilq.quantity * (item.cost_price || 0),
+                low_stock_threshold: item.low_stock_threshold,
+              });
             }
-            return { success: true, data: data || [] };
-        } catch (error) {
-            console.error('[db.getInventoryByStorageLocation] General error:', error);
-            return { success: false, message: error.message || "Failed to get storage breakdown.", data: [] };
-        }
-    },
-
-      // --- NEW ANALYTICS DB FUNCTIONS ---
-
-      async getSalesSummary(period = 'last30days') {
-        if (!supabase) return { success: false, message: "DB client not init.", summary: null };
-        try {
-          const { startDate, endDate } = getDateRange(period);
-
-          // Fetch fulfilled orders within the period
-          const { data, error } = await supabase
-            .from('sales_orders')
-            .select('total_amount')
-            .eq('status', 'Fulfilled')
-            .gte('order_date', startDate) // Assuming order_date reflects the sale date
-            .lte('order_date', endDate);
-
-          if (error) throw error;
-
-          const numberOfOrders = data ? data.length : 0;
-          const totalSalesValue = (data || []).reduce((sum, order) => sum + (Number(order.total_amount) || 0), 0);
-          const averageOrderValue = numberOfOrders > 0 ? totalSalesValue / numberOfOrders : 0;
-
-          return {
-            success: true,
-            summary: {
-              totalSalesValue,
-              numberOfOrders,
-              averageOrderValue,
-            },
-          };
-        } catch (error) {
-          console.error('[db.getSalesSummary] Error:', error);
-          return { success: false, message: error.message, summary: null };
-        }
-      },
-
-      async getTopSellingItems(period = 'last30days', limit = 5) {
-        if (!supabase) return { success: false, message: "DB client not init.", items: [] };
-        try {
-          const { startDate, endDate } = getDateRange(period);
-
-          // This query is a bit more complex as it needs to sum quantities from sales_order_items
-          // and join with items/bundles. An RPC would be more efficient.
-          // Simplified version: Sum quantities and values from sales_order_items.
-          // You'll need to enhance this to get item/bundle names.
-
-          // Fetch fulfilled sales order IDs within the period
-          const { data: fulfilledOrders, error: orderError } = await supabase
-            .from('sales_orders')
-            .select('id')
-            .eq('status', 'Fulfilled')
-            .gte('order_date', startDate)
-            .lte('order_date', endDate);
-
-          if (orderError) throw orderError;
-          if (!fulfilledOrders || fulfilledOrders.length === 0) {
-            return { success: true, items: [] }; // No fulfilled orders, so no top items
-          }
-
-          const fulfilledOrderIds = fulfilledOrders.map(o => o.id);
-
-
-
-          const { data: topItems, error: rpcError } = await supabase.rpc('get_top_selling_products_rpc', {
-            start_date_param: startDate,
-            end_date_param: endDate,
-            result_limit: limit
           });
-
-          if (rpcError) {
-            console.error('[db.getTopSellingItems] RPC Error:', rpcError);
-            throw rpcError;
-          }
-
-          return { success: true, items: topItems || [] };
-
-        } catch (error) {
-          console.error('[db.getTopSellingItems] Error:', error);
-          return { success: false, message: error.message, items: [] };
-        }
-      },
-
-      async getSalesByStatus(period = 'last30days') {
-        if (!supabase) return { success: false, message: "DB client not init.", data: [] };
-        try {
-          const { startDate, endDate } = getDateRange(period);
-
-          const { data, error } = await supabase.rpc('get_sales_summary_by_status_rpc', {
-              start_date_param: startDate,
-              end_date_param: endDate
+        } else if (!filters.locationId && !filters.lowStockOnly) {
+          // Show items with no stock records if no location filter
+          flatData.push({
+            item_id: item.id,
+            sku: item.sku,
+            item_name: item.name,
+            variant: item.variant,
+            category: item.category,
+            location_id: null,
+            location_name: "N/A (No Stock Records)",
+            quantity_at_location: 0,
+            cost_price: item.cost_price,
+            stock_value_at_location: 0,
+            low_stock_threshold: item.low_stock_threshold,
           });
-
-
-          if (error) {
-            console.error('[db.getSalesByStatus] RPC Error:', error);
-            throw error;
-          }
-          // The RPC directly returns data in [{status: 'X', count: N}, ...] format
-          return { success: true, data: data || [] };
-
-        } catch (error) {
-          console.error('[db.getSalesByStatus] Error:', error);
-          return { success: false, message: error.message, data: [] };
         }
-       },
-       async getStoreLocationId() {
-           if (!supabase) {
-             console.error("[db.getStoreLocationId] Supabase client not initialized.");
-             return null; // Or throw an error
-           }
-           try {
-             // Assuming your main store location is named 'STORE'
-             // Make sure this name matches exactly what's in your 'storage_locations' table.
-             const storeLocationName = 'STORE';
+      });
 
-             const { data, error } = await supabase
-               .from('storage_locations')
-               .select('id')
-               .eq('name', storeLocationName) // Case-sensitive match by default
-               .eq('is_active', true)         // Ensure the store location is active
-               .single(); // Expect only one 'STORE' location
+      return { success: true, data: flatData };
+    } catch (error) {
+      console.error("[db.getDetailedStockReport] Error:", error);
+      return { success: false, message: error.message, data: [] };
+    }
+  },
 
-             if (error) {
-               // PGRST116 means "exactly one row expected, but 0 or more than 1 were found"
-               // If 0 rows, it means 'STORE' location doesn't exist or isn't active.
-               if (error.code === 'PGRST116') {
-                 console.warn(`[db.getStoreLocationId] Active storage location named "${storeLocationName}" not found.`);
-                 return null;
-               }
-               // For other errors
-               console.error(`[db.getStoreLocationId] Error fetching ID for location "${storeLocationName}":`, error);
-               throw error; // Re-throw other errors
-             }
+  async getSalesDetailReport(filters = {}) {
+    // filters: { period (maps to startDate, endDate), customerId, itemId, bundleId }
+    if (!supabase)
+      return { success: false, message: "DB client not init.", data: [] };
+    try {
+      const { startDate, endDate } = getDateRange(
+        filters.period || "last30days"
+      );
 
-             if (!data) {
-               console.warn(`[db.getStoreLocationId] Active storage location named "${storeLocationName}" not found (data is null).`);
-               return null;
-             }
+      let query = supabase
+        .from("sales_order_items")
+        .select(
+          `
+                         *,
+                         sales_orders!inner (order_number, order_date, status, customer:customers (id, full_name)),
+                         item:items (id, name, category),
+                         bundle:bundles (id, name)
+                     `
+        )
+        .gte("sales_orders.order_date", startDate)
+        .lte("sales_orders.order_date", endDate);
+      // .eq('sales_orders.status', 'Fulfilled') // Optional: only fulfilled, or all? For sales detail, often all.
+      if (filters.customerId) {
+        query = query.eq("sales_orders.customer_id", filters.customerId);
+      }
+      if (filters.itemId) {
+        query = query.eq("item_id", filters.itemId);
+      }
+      if (filters.bundleId) {
+        query = query.eq("bundle_id", filters.bundleId);
+      }
+      // Add category filter if needed (would require joining items/bundles then filtering)
 
-             console.log(`[db.getStoreLocationId] Found ID for "${storeLocationName}": ${data.id}`);
-             return data.id;
+      const { data, error } = await query.order("order_date", {
+        foreignTable: "sales_orders",
+        ascending: false,
+      });
 
-           } catch (err) {
-             console.error('[db.getStoreLocationId] Unexpected error:', err);
-             return null; // Return null on unexpected errors
-           }
-         },
-
-       async getStorageLocations() {
-           if (!supabase) return { success: false, message: "Database client not initialized.", locations: [] };
-           try {
-             const { data, error } = await supabase
-               .from('storage_locations')
-               .select('id, name, description')
-               .eq('is_active', true)
-               .order('name', { ascending: true });
-
-             if (error) throw error;
-             return { success: true, locations: data || [] };
-           } catch (error) {
-             console.error('[db.getStorageLocations] Error:', error);
-             return { success: false, message: error.message, locations: [] };
-           }
-         },
-
+      if (error) throw error;
+      return { success: true, data: data || [] };
+    } catch (error) {
+      console.error("[db.getSalesDetailReport] Error:", error);
+      return { success: false, message: error.message, data: [] };
+    }
+  },
 
   // ... (rest of your db object)
 

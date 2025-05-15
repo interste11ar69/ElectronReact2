@@ -1,4 +1,5 @@
 /* src/BundleListPage.css */
+
 .bundle-list-page .page-header-alt {
     display: flex;
     justify-content: space-between;
@@ -10,6 +11,8 @@
 
 .bundle-list-page .page-header-alt h1 {
     margin: 0;
+    font-size: 1.8em; /* Ensure this matches your other page titles if needed */
+    font-weight: 700; /* Ensure titles are bold */
 }
 
 #bundleTable {
@@ -20,44 +23,60 @@
 #bundleTable th,
 #bundleTable td {
     border: 1px solid var(--color-border-soft);
-    padding: 0.75rem;
+    padding: 0.75rem; /* Base padding */
     text-align: left;
-    vertical-align: top; /* For component list */
+    /* vertical-align: top; /* Keep this if you prefer for other cells like component list */
+                           /* For action buttons, middle is often better if they are single line */
 }
 
-#bundleTable thead th {
-    background-color: var(--color-table-header-bg);
-    font-weight: 600;
+/* --- Styles for Table Actions Cell --- */
+#bundleTable td.table-actions {
+    vertical-align: middle; /* Vertically align the content (button group) in the middle of the cell */
+    /* Remove white-space: nowrap; to allow wrapping */
+    /* text-align: left; /* Default, or center if you want the wrapped group centered */
 }
 
-#bundleTable tbody tr:hover {
-    background-color: var(--color-table-row-hover);
+/* Create a flex container for the buttons inside the TD */
+.actions-button-group {
+    display: flex;
+    flex-wrap: wrap; /* Allow buttons to wrap to the next line */
+    gap: calc(var(--spacing-unit) * 1.5); /* Consistent gap between buttons, both horizontally and vertically when wrapped */
+    align-items: center; /* Align items nicely if they wrap to multiple lines */
+    /* justify-content: flex-start; /* Default: aligns buttons to the start (left) */
+    /* Or use 'center' if you want the button group (possibly wrapped) to be centered within the cell */
+    /* justify-content: center; */
 }
 
-.component-list-inline {
-    list-style: none;
-    padding: 0;
-    margin: 0;
-    font-size: 0.9em;
-}
-.component-list-inline li {
-    margin-bottom: 0.25rem;
-}
-.component-list-inline li:last-child {
-    margin-bottom: 0;
-}
 
-.record-sale-btn {
-    /* Basic styling, can be like button-edit or button-primary */
-    padding: calc(var(--spacing-unit) * 0.75) calc(var(--spacing-unit) * 1.5);
-    font-size: calc(var(--font-size-base) * 0.875);
-    margin-left: var(--spacing-unit); /* Add some space from other buttons */
+/* --- Styles for the Action Buttons Themselves --- */
+#bundleTable .table-actions .button-edit,
+#bundleTable .table-actions .button-delete,
+#bundleTable .table-actions .record-sale-btn {
+    /* margin-right is now handled by 'gap' in .actions-button-group */
+    /* margin-bottom is now handled by 'gap' in .actions-button-group when wrapped */
+    vertical-align: middle;
+    display: inline-flex;
+    align-items: center;
+    padding: calc(var(--spacing-unit) * 1.25) calc(var(--spacing-unit) * 2);
+    font-size: 0.85em;
     border-radius: var(--border-radius);
-    background-color: var(--color-status-success); /* Green for "sell" action */
+    flex-shrink: 0; /* Prevent buttons from shrinking too much if the container is very narrow */
+}
+
+/* Space for icons within buttons */
+#bundleTable .table-actions .button-edit svg,
+#bundleTable .table-actions .button-delete svg,
+#bundleTable .table-actions .record-sale-btn svg {
+    margin-right: calc(var(--spacing-unit) * 1);
+    font-size: 1.1em;
+}
+
+/* Specific styles for .record-sale-btn (can refine from your existing) */
+.record-sale-btn {
+    background-color: var(--color-status-success);
     border: 1px solid var(--color-status-success);
     color: white;
     cursor: pointer;
-    transition: opacity 0.15s ease-in-out;
 }
 .record-sale-btn:hover {
     opacity: 0.85;
@@ -65,12 +84,13 @@
 .record-sale-btn:disabled {
     background-color: var(--color-text-light) !important;
     border-color: var(--color-text-light) !important;
+    color: var(--color-surface) !important;
     opacity: 0.65;
     cursor: not-allowed;
 }
 
 
-/* Modal Styles (can be global or specific) */
+/* --- Modal Styles (Keep as is, looks good) --- */
 .modal-overlay {
   position: fixed;
   top: 0;
@@ -115,6 +135,6 @@
     border: 1px solid var(--color-border-strong);
     border-radius: var(--border-radius);
     width: 100px; /* Adjust as needed */
+    /* Ensure text alignment if needed */
+    /* text-align: right; */
 }
-
-/* Reuse .button-edit, .button-delete, .table-actions from index.css */

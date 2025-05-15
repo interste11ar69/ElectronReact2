@@ -502,6 +502,8 @@ async getItems(filters = {}) {
               return { success: false, message: error.message || "RPC call failed." };
           }
       },
+
+
   async updateItem(id, itemData) {
     // id is separate, itemData is the object of fields to update
     if (!supabase)

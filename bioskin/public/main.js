@@ -1029,81 +1029,138 @@ app.on('window-all-closed', function () {
 
 });
 ipcMain.handle('process-return', async (event, frontendReturnDetails) => {
-    // frontendReturnDetails: { itemId, quantityReturned, reason, condition, customerId, notes }
-    console.log('[Main Process] IPC: process-return with details:', frontendReturnDetails);
+    // Log the details received from the frontend
+    console.log('[Main Process] IPC: process-return invoked. Received details:', JSON.stringify(frontendReturnDetails, null, 2));
     const user = currentUser;
 
-    if (!user) return { success: false, message: "User not authenticated to process returns." };
-    // Add role checks if needed for who can process returns
+    if (!user) {
+        console.error('[Main Process] Error processing return: User not authenticated.');
+        return { success: false, message: "User not authenticated to process returns." };
+    }
+
+    // Basic validation of incoming details
+    if (!frontendReturnDetails || !frontendReturnDetails.itemId || !frontendReturnDetails.quantityReturned || !frontendReturnDetails.reason || !frontendReturnDetails.condition) {
+        console.error('[Main Process] Error processing return: Missing required fields in frontendReturnDetails.');
+        return { success: false, message: "Missing required return details (item, quantity, reason, or condition)." };
+    }
+    if (parseInt(frontendReturnDetails.quantityReturned, 10) <= 0) {
+        console.error('[Main Process] Error processing return: Invalid quantityReturned.');
+        return { success: false, message: "Quantity returned must be a positive number." };
+    }
+
 
     try {
         // 1. Create the main return record in 'returns' table
         const returnRecordData = {
             item_id: frontendReturnDetails.itemId,
-            quantity_returned: frontendReturnDetails.quantityReturned,
+            quantity_returned: parseInt(frontendReturnDetails.quantityReturned, 10),
             reason: frontendReturnDetails.reason,
             condition: frontendReturnDetails.condition,
             customer_id: frontendReturnDetails.customerId || null,
             notes: frontendReturnDetails.notes || null,
-            processed_by_user_id: user.id, // Log who processed it
+            processed_by_user_id: user.id,
             inventory_adjusted: false // Default to false, will be set true if restocked
         };
+
+        console.log('[Main Process] Creating return record with data:', JSON.stringify(returnRecordData, null, 2));
         const createReturnResult = await db.createReturnRecord(returnRecordData);
 
         if (!createReturnResult.success || !createReturnResult.returnRecord) {
+            console.error('[Main Process] Failed to create return record in DB:', createReturnResult.message);
             return { success: false, message: createReturnResult.message || "Failed to create return record." };
         }
+
         const returnRecord = createReturnResult.returnRecord;
         let message = `Return ID ${returnRecord.id} processed.`;
+        let restockSuccessful = false;
+
+        console.log(`[Main Process] Condition check: frontendReturnDetails.condition is "${frontendReturnDetails.condition}"`);
 
         // 2. If item is 'Resellable', adjust stock and log movement
-        let restockSuccessful = false;
         if (frontendReturnDetails.condition === 'Resellable') {
-            const transactionDetailsForDB = {
-                transactionType: 'RETURN_RESTOCK',
-                referenceId: String(returnRecord.id), // Link to the return record
-                referenceType: 'SALES_RETURN',
-                userId: user.id,
-                usernameSnapshot: user.username,
-                notes: `Restocked from Return ID: ${returnRecord.id}. Original reason: ${frontendReturnDetails.reason}`
-            };
+            console.log(`[Main Process] Item is "Resellable". Proceeding with restock logic.`);
+            console.log(`[Main Process]   - Item ID for restock: ${frontendReturnDetails.itemId}`);
+            console.log(`[Main Process]   - Target Location ID for restock: ${frontendReturnDetails.returnToLocationId}`);
+            console.log(`[Main Process]   - Target Location Name for restock: ${frontendReturnDetails.returnToLocationName}`);
+            console.log(`[Main Process]   - Quantity to restock: ${frontendReturnDetails.quantityReturned}`);
 
-            console.log('[Main Process] Calling db.adjustStockQuantity for restock:', frontendReturnDetails.itemId, frontendReturnDetails.quantityReturned, transactionDetailsForDB);
-            const restockResult = await db.adjustStockQuantity(
-                frontendReturnDetails.itemId,
-                frontendReturnDetails.quantityReturned, // Positive to add stock back
-                transactionDetailsForDB
-            );
-
-            if (restockResult.success) {
-                await db.markReturnInventoryAdjusted(returnRecord.id); // Update the return record
-                message += ` Item restocked. New quantity: ${restockResult.newQuantity}.`;
-                restockSuccessful = true;
+            if (!frontendReturnDetails.returnToLocationId) {
+                message += ` WARNING: Failed to restock item. Reason: Target location for resellable item was not specified.`;
+                console.error(`[Main Process] CRITICAL (Resellable): Cannot restock. Target location ID is MISSING for return ${returnRecord.id}. Item ID: ${frontendReturnDetails.itemId}`);
+                // inventory_adjusted remains false for the return record
             } else {
-                message += ` WARNING: Failed to restock item. Error: ${restockResult.message}`;
-                console.error(`[Main Process] CRITICAL: Return ${returnRecord.id} processed but item restock failed for item ${frontendReturnDetails.itemId}.`);
-                // You might want to flag this return for manual review
+                const transactionDetailsForDB = {
+                    transactionType: 'RETURN_RESTOCK',
+                    referenceId: String(returnRecord.id),
+                    referenceType: 'SALES_RETURN',
+                    userId: user.id,
+                    usernameSnapshot: user.username,
+                    notes: `Restocked from Return ID: ${returnRecord.id}. Original reason: "${frontendReturnDetails.reason}". Returned to: "${frontendReturnDetails.returnToLocationName || `Location ID ${frontendReturnDetails.returnToLocationId}`}"`
+                };
+
+                console.log(`[Main Process] Attempting to call db.adjustStockQuantity for restock with details:`, JSON.stringify({
+                    itemId: frontendReturnDetails.itemId,
+                    locationId: frontendReturnDetails.returnToLocationId,
+                    quantity: parseInt(frontendReturnDetails.quantityReturned, 10),
+                    transactionDetails: transactionDetailsForDB
+                }, null, 2));
+
+                const restockResult = await db.adjustStockQuantity(
+                    frontendReturnDetails.itemId,
+                    frontendReturnDetails.returnToLocationId,   // Corrected: Location ID
+                    parseInt(frontendReturnDetails.quantityReturned, 10), // Corrected: Quantity (ensure it's a number)
+                    transactionDetailsForDB
+                );
+
+                console.log('[Main Process] db.adjustStockQuantity result for restock:', JSON.stringify(restockResult, null, 2));
+
+                if (restockResult.success) {
+                    console.log(`[Main Process] Restock successful for return ${returnRecord.id}. Attempting to mark inventory_adjusted.`);
+                    const markAdjustedResult = await db.markReturnInventoryAdjusted(returnRecord.id);
+                    if (!markAdjustedResult.success) {
+                        console.error(`[Main Process] WARNING: Failed to mark return ${returnRecord.id} as inventory_adjusted. Error: ${markAdjustedResult.message}`);
+                        message += ` Item restocked, but failed to update return record's adjusted status.`;
+                    } else {
+                         message += ` Item restocked to "${frontendReturnDetails.returnToLocationName || `Location ID ${frontendReturnDetails.returnToLocationId}`}".`;
+                         if (restockResult.newQuantityAtLocation !== undefined && restockResult.newQuantityAtLocation !== null) {
+                            message += ` New quantity at location: ${restockResult.newQuantityAtLocation}.`;
+                         }
+                    }
+                    restockSuccessful = true;
+                } else {
+                    message += ` WARNING: Failed to restock item to "${frontendReturnDetails.returnToLocationName || `Location ID ${frontendReturnDetails.returnToLocationId}`}". Error: ${restockResult.message}`;
+                    console.error(`[Main Process] CRITICAL: Return ${returnRecord.id} processed but item restock failed for item ${frontendReturnDetails.itemId} to location ${frontendReturnDetails.returnToLocationId}. Error: ${restockResult.message}`);
+                }
             }
         } else {
             message += " Item not restocked due to condition.";
+            console.log(`[Main Process] Item condition is "${frontendReturnDetails.condition}", not "Resellable". Skipping restock.`);
         }
 
         // 3. General Activity Log
-        const itemInfo = await db.getItemById(frontendReturnDetails.itemId);
-        const activityLogDetails = `Return processed for item ${itemInfo?.name || `ID ${frontendReturnDetails.itemId}`}. Return ID: ${returnRecord.id}. Condition: ${frontendReturnDetails.condition}. ${restockSuccessful ? 'Item restocked.' : 'Item not restocked.'}`;
-        const activityLogResult = await db.addActivityLogEntry({
-            user_identifier: user.username,
-            action: 'Product Return Processed',
-            details: activityLogDetails
-        });
-        if (activityLogResult.success && activityLogResult.entry) {
-            event.sender.send('new-log-entry', activityLogResult.entry);
+        let itemNameForLog = `ID ${frontendReturnDetails.itemId}`;
+        try {
+            const itemInfo = await db.getItemById(frontendReturnDetails.itemId);
+            if (itemInfo && itemInfo.name) {
+                itemNameForLog = `${itemInfo.name} (ID: ${frontendReturnDetails.itemId})`;
+            }
+        } catch (itemFetchError) {
+            console.warn(`[Main Process] Could not fetch item details for activity log: ${itemFetchError.message}`);
         }
 
+        const activityLogDetails = `Return processed for item ${itemNameForLog}. Return ID: ${returnRecord.id}. Condition: ${frontendReturnDetails.condition}. ${restockSuccessful ? 'Item restocked.' : 'Item not restocked.'}`;
+
+        // Call logActivity (your global logging function)
+        await logActivity(user.username, 'Product Return Processed', activityLogDetails);
+        // The logActivity function itself handles sending 'new-log-entry' to the renderer if mainWindow is available.
+
+        console.log(`[Main Process] Final message for return ${returnRecord.id}: "${message}"`);
         return { success: true, message: message, returnId: returnRecord.id };
 
     } catch (error) {
         console.error('[Main Process] Error in process-return IPC handler:', error);
+        // Log the error using your global logActivity function as well
+        await logActivity(user?.username || 'System', 'Error Processing Return', `Details: ${JSON.stringify(frontendReturnDetails)}. Error: ${error.message}`);
         return { success: false, message: error.message || "Server error during return processing." };
     }
 });

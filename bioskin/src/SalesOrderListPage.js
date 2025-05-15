@@ -103,7 +103,7 @@ function SalesOrderListPage({ currentUser }) {
 
                 {salesOrders.length > 0 && (
                     <div className="table-container">
-                        <table id="salesOrderTable"> {/* Unique ID for this table */}
+                        <table id="salesOrderTable">
                             <thead>
                                 <tr>
                                     <th>Order #</th>
@@ -136,10 +136,6 @@ function SalesOrderListPage({ currentUser }) {
                                             >
                                                 <FaEye /> View/Edit
                                             </button>
-                                            {/* Delete might be admin-only or have restrictions */}
-                                            {/* {currentUser?.role === 'admin' && (
-                                                <button className="button-delete"> <FaTrash /> Delete</button>
-                                            )} */}
                                         </td>
                                     </tr>
                                 ))}

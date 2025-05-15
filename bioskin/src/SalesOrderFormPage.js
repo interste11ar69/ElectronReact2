@@ -6,24 +6,48 @@ import { FaArrowLeft, FaPlusCircle, FaTrashAlt, FaSave } from 'react-icons/fa';
 import './SalesOrderFormPage.css'; // Make sure you have this CSS file
 
 const ORDER_STATUSES = ['Pending', 'Confirmed', 'Awaiting Payment', 'Ready to Ship', 'Fulfilled', 'Cancelled'];
-// Define which roles can mark an order as Fulfilled
 const FULFILLMENT_ROLES = ['admin', 'manager']; // Add 'employee' if they should also fulfill
+
+// Define or import react-select custom styles
+const reactSelectStyles = {
+    control: (baseStyles, state) => ({
+        ...baseStyles,
+        borderColor: state.isFocused ? 'var(--color-primary-dark)' : 'var(--color-border-strong)',
+        boxShadow: state.isFocused ? '0 0 0 0.2rem var(--focus-ring-color)' : 'none',
+        '&:hover': {
+            borderColor: state.isFocused ? 'var(--color-primary-dark)' : 'var(--color-border-strong)',
+        },
+        minHeight: 'calc(1.5em + (0.75rem * 2) + 2px)', // Approximate standard input height
+        fontSize: '0.9em', // Match other inputs
+    }),
+    menu: base => ({ ...base, zIndex: 10 }) // Ensure dropdown is on top
+    // Add other style overrides if needed (placeholder, valueContainer, etc.)
+};
+
 
 function SalesOrderFormPage({ currentUser }) {
     const { id: orderIdFromParams } = useParams();
     const navigate = useNavigate();
     const isEditing = Boolean(orderIdFromParams);
 
-    const initialLineItem = { type: 'item', productId: null, quantity: 1, unitPrice: 0, name: '', sku: '' };
+    const getInitialLineItem = () => ({ // Made into a function for fresh objects
+        type: 'item',
+        productId: null,
+        quantity: 1,
+        unitPrice: 0,
+        name: '',
+        sku: ''
+    });
+
     const [formData, setFormData] = useState({
         customer_id: null,
         order_date: new Date().toISOString().slice(0, 10),
         status: 'Pending',
         notes: '',
-        items: [initialLineItem],
-        order_number: '' // To store existing order number
+        items: [getInitialLineItem()], // Use function here
+        order_number: ''
     });
-    const [originalStatus, setOriginalStatus] = useState(''); // To track original status when editing
+    const [originalStatus, setOriginalStatus] = useState('');
     const [orderTotal, setOrderTotal] = useState(0);
 
     const [customers, setCustomers] = useState([]);
@@ -36,18 +60,24 @@ function SalesOrderFormPage({ currentUser }) {
 
     const loadInitialData = useCallback(async () => {
         setIsLoading(true);
-        setError(''); // Clear previous errors
+        setError('');
         try {
             const [customerRes, itemRes, bundleRes] = await Promise.all([
                 window.electronAPI.getCustomers({}),
-                window.electronAPI.getItems({ isActive: true }),
-                window.electronAPI.getBundles({ isActive: true })
+                // Fetch items/bundles that are active and potentially available for sale
+                window.electronAPI.getItems({ is_archived: false }), // Assuming active items are sellable
+                window.electronAPI.getBundles({ isActive: true })     // Assuming active bundles are sellable
             ]);
 
-            setCustomers(customerRes.map(c => ({ value: c.id, label: c.full_name })));
+            if (customerRes && Array.isArray(customerRes)) {
+                setCustomers(customerRes.map(c => ({ value: c.id, label: c.full_name })));
+            } else {
+                console.warn("Failed to load customers or invalid format.");
+                // Optionally set an error or allow proceeding without customers
+            }
 
-            const productOptions = itemRes.map(i => ({ value: `item-${i.id}`, label: `[Item] ${i.name} (SKU: ${i.sku || 'N/A'}) - Price: ${i.cost_price?.toFixed(2)}`, type: 'item', id: i.id, price: i.cost_price, name: i.name, sku: i.sku }));
-            const bundleOptions = bundleRes.map(b => ({ value: `bundle-${b.id}`, label: `[Bundle] ${b.name} (SKU: ${b.bundle_sku || 'N/A'}) - Price: ${b.price?.toFixed(2)}`, type: 'bundle', id: b.id, price: b.price, name: b.name, sku: b.bundle_sku }));
+            const productOptions = (itemRes && Array.isArray(itemRes)) ? itemRes.map(i => ({ value: `item-${i.id}`, label: `[Item] ${i.name} (SKU: ${i.sku || 'N/A'}) - Price: ${i.cost_price != null ? i.cost_price.toFixed(2) : 'N/A'}`, type: 'item', id: i.id, price: i.cost_price, name: i.name, sku: i.sku })) : [];
+            const bundleOptions = (bundleRes && Array.isArray(bundleRes)) ? bundleRes.map(b => ({ value: `bundle-${b.id}`, label: `[Bundle] ${b.name} (SKU: ${b.bundle_sku || 'N/A'}) - Price: ${b.price != null ? b.price.toFixed(2) : 'N/A'}`, type: 'bundle', id: b.id, price: b.price, name: b.name, sku: b.bundle_sku })) : [];
             setProductsAndBundles([...productOptions, ...bundleOptions]);
 
             if (isEditing && orderIdFromParams) {
@@ -58,25 +88,34 @@ function SalesOrderFormPage({ currentUser }) {
                         order_date: new Date(order.order_date).toISOString().slice(0, 10),
                         status: order.status,
                         notes: order.notes || '',
-                        items: order.order_items.map(oi => ({
-                            type: oi.item_id ? 'item' : 'bundle',
-                            productId: oi.item_id ? `item-${oi.item_id}` : `bundle-${oi.bundle_id}`,
-                            quantity: oi.quantity,
-                            unitPrice: oi.unit_price,
-                            name: oi.item_snapshot_name,
-                            sku: oi.item_snapshot_sku,
-                            existingOrderItemId: oi.id
-                        })),
+                        items: order.order_items && order.order_items.length > 0
+                               ? order.order_items.map(oi => ({
+                                    type: oi.item_id ? 'item' : 'bundle',
+                                    productId: oi.item_id ? `item-${oi.item_id}` : `bundle-${oi.bundle_id}`,
+                                    quantity: oi.quantity,
+                                    unitPrice: oi.unit_price,
+                                    name: oi.item_snapshot_name,
+                                    sku: oi.item_snapshot_sku,
+                                    existingOrderItemId: oi.id // Useful if you implement item-level updates
+                                }))
+                               : [getInitialLineItem()], // Ensure at least one line item if fetched order has none
                         order_number: order.order_number || `ID-${order.id}`
                     });
-                    setOriginalStatus(order.status); // Store the original status
+                    setOriginalStatus(order.status);
                 } else {
                     setError(`Sales Order with ID ${orderIdFromParams} not found.`);
-                    setFormData(prev => ({...prev, status: 'ErrorLoading'})); // Prevent interaction
+                    setFormData(prev => ({...prev, status: 'ErrorLoading'}));
                 }
             } else {
-                 // For new orders, ensure a default status if not already set
-                 setFormData(prev => ({ ...prev, status: prev.status || 'Pending', items: [initialLineItem] }));
+                 setFormData(prev => ({
+                     ...prev,
+                     customer_id: null, // Ensure reset for new form
+                     order_date: new Date().toISOString().slice(0, 10),
+                     status: 'Pending',
+                     notes: '',
+                     items: [getInitialLineItem()],
+                     order_number: ''
+                }));
             }
 
         } catch (err) {
@@ -85,7 +124,7 @@ function SalesOrderFormPage({ currentUser }) {
         } finally {
             setIsLoading(false);
         }
-    }, [isEditing, orderIdFromParams]); // Removed initialLineItem from deps as it's constant
+    }, [isEditing, orderIdFromParams]);
 
     useEffect(() => {
         loadInitialData();
@@ -109,17 +148,17 @@ function SalesOrderFormPage({ currentUser }) {
     };
 
     const handleItemLineChange = (index, field, value) => {
-        const newItems = [...formData.items];
+        const newItems = JSON.parse(JSON.stringify(formData.items)); // Deep copy
         if (field === 'productId') {
             const selectedProduct = productsAndBundles.find(p => p.value === value);
             newItems[index] = {
-                ...newItems[index],
-                productId: value,
+                // ...getInitialLineItem(), // Reset all fields of the line item
                 type: selectedProduct ? selectedProduct.type : 'item',
-                unitPrice: selectedProduct ? (selectedProduct.price !== undefined ? selectedProduct.price : 0) : 0,
+                productId: value,
+                unitPrice: selectedProduct ? (selectedProduct.price !== undefined && selectedProduct.price !== null ? selectedProduct.price : 0) : 0,
                 name: selectedProduct ? selectedProduct.name : '',
                 sku: selectedProduct ? (selectedProduct.sku || '') : '',
-                 quantity: newItems[index].quantity || 1 // Ensure quantity defaults to 1 if not set
+                quantity: newItems[index].quantity || 1 // Preserve quantity if already set, else 1
             };
         } else {
             newItems[index][field] = value;
@@ -128,7 +167,7 @@ function SalesOrderFormPage({ currentUser }) {
     };
 
     const addLineItem = () => {
-        setFormData(prev => ({ ...prev, items: [...prev.items, { ...initialLineItem, quantity: 1, unitPrice: 0 }] }));
+        setFormData(prev => ({ ...prev, items: [...prev.items, getInitialLineItem()] }));
     };
 
     const removeLineItem = (index) => {
@@ -147,8 +186,8 @@ function SalesOrderFormPage({ currentUser }) {
             return;
         }
 
-        if (formData.items.some(item => !item.productId || (Number(item.quantity) || 0) <= 0 || (Number(item.unitPrice) || 0) < 0)) {
-            setError("All line items must have a product selected, quantity greater than 0, and a non-negative unit price.");
+        if (formData.items.some(item => !item.productId || (Number(item.quantity) || 0) <= 0 || (item.unitPrice !== undefined && (Number(item.unitPrice) || 0) < 0))) {
+            setError("All line items must have a product selected, quantity > 0, and non-negative unit price.");
             return;
         }
 
@@ -157,65 +196,49 @@ function SalesOrderFormPage({ currentUser }) {
             return;
         }
 
+        // Confirmation dialogs
         if (isEditing && formData.status === 'Fulfilled' && originalStatus !== 'Fulfilled') {
-            if (!window.confirm("You are about to mark this order as 'Fulfilled'. This WILL DEDUCT STOCK. Are you sure?")) {
-                return;
-            }
+            if (!window.confirm("You are about to mark this order as 'Fulfilled'. This WILL DEDUCT STOCK from STORE. Are you sure?")) return;
         }
         if (isEditing && formData.status === 'Cancelled' && originalStatus !== 'Cancelled') {
-            if (!window.confirm("You are about to mark this order as 'Cancelled'. This action might be irreversible for stock. Are you sure?")) {
-                return;
-            }
+            if (!window.confirm("You are about to mark this order as 'Cancelled'. Stock will NOT be automatically restocked. Are you sure?")) return;
         }
-        if (!isEditing && formData.status === 'Fulfilled') { // Only for NEW orders being created as Fulfilled
-                    if (!window.confirm("You are about to create this order as 'Fulfilled'. This WILL DEDUCT STOCK immediately. Are you sure?")) {
-                        return; // User cancelled
-                    }
-                }
-
+        if (!isEditing && formData.status === 'Fulfilled') {
+            if (!window.confirm("You are about to create this order as 'Fulfilled'. This WILL DEDUCT STOCK from STORE immediately. Are you sure?")) return;
+        }
 
         setIsSubmitting(true);
 
         try {
             let result;
             if (isEditing) {
-                // --- MODIFICATION START: Handle existing order update ---
-                // Primarily for status changes. If other fields (customer, notes, items) are changed,
-                // you'd ideally have a more comprehensive updateSalesOrder API.
-                // For now, this focuses on status update which triggers stock deduction if newStatus is 'Fulfilled'.
                 if (formData.status !== originalStatus) {
+                    // This call handles stock deduction if newStatus is 'Fulfilled'
                     result = await window.electronAPI.updateSalesOrderStatus(orderIdFromParams, formData.status);
                 } else {
-                    // If only notes/customer changed, you'd need another API or an enhanced updateSalesOrderStatus
-                    // For this example, if status didn't change, we'll just show a success message as if no actual update was needed.
-                    // Or, you could have a general updateOrderDetails API call.
-                    // For now, if status is unchanged, let's assume no other critical fields are being updated by non-admins.
-                    // An admin might update other details, requiring a different API call.
-                    // This logic needs to be expanded if you want full editability of other fields by employees.
-                    // For now, let's assume if status is the same, we are just re-saving notes or customer.
-                    // We'll make a call to a general update function if one exists, or just simulate success for this example.
-                    // For this iteration, we primarily focus on the status change triggering fulfillment.
-                    // If other fields are editable by employee, they should call a different backend endpoint
-                    // that *doesn't* trigger stock deduction unless status also changes to Fulfilled.
-                    console.log("Order status unchanged. If other fields were meant to be updated, a different API call might be needed.");
-                    // You might want to call a generic updateOrderDetails(orderId, { notes: formData.notes, customer_id: formData.customer_id })
-                    // For this example, we'll focus on status changes. If only notes/customer changed, we'll act as if it was okay.
+                    // Placeholder for updating other order details (notes, customer, items if allowed)
+                    // This would require a separate backend API endpoint.
+                    // For now, we assume if status is unchanged, only minor non-critical details might have changed.
+                    console.log("Order status unchanged. To update other details like notes, customer, or items, a specific API call is needed.");
+                    // Example:
+                    // const detailsToUpdate = { notes: formData.notes, customer_id: formData.customer_id };
+                    // result = await window.electronAPI.updateSalesOrderDetails(orderIdFromParams, detailsToUpdate);
+                    // For this example, if no specific "update details" API exists, we simulate success.
                     setSuccessMessage("Order details (like notes/customer) saved. Status remains: " + formData.status);
                     setTimeout(() => navigate('/sales-orders'), 2000);
                     setIsSubmitting(false);
-                    return; // Exit early
+                    return;
                 }
-                // --- MODIFICATION END ---
             } else { // Creating new order
                 const orderPayload = {
                     customer_id: formData.customer_id,
                     order_date: formData.order_date,
-                    status: formData.status, // Initial status
+                    status: formData.status,
                     notes: formData.notes,
                     total_amount: orderTotal,
-                    created_by_user_id: currentUser?.id
+                    // created_by_user_id is handled by main.js using currentUser
                 };
-                orderPayload.order_number = await window.electronAPI.generateOrderNumber();
+                // orderPayload.order_number = await window.electronAPI.generateOrderNumber(); // Backend can generate this
                 const orderItemsPayload = formData.items.map(item => ({
                     item_id: item.type === 'item' ? parseInt(item.productId.split('-')[1]) : null,
                     bundle_id: item.type === 'bundle' ? parseInt(item.productId.split('-')[1]) : null,
@@ -226,24 +249,23 @@ function SalesOrderFormPage({ currentUser }) {
                     line_total: (parseInt(item.quantity) * parseFloat(item.unitPrice))
                 }));
                 result = await window.electronAPI.createSalesOrder(orderPayload, orderItemsPayload);
-
-                // If a new order is directly created as "Fulfilled" (and user has permission)
-                if (result.success && formData.status === 'Fulfilled' && canFulfillOrder) {
-                    // The stock deduction should have been handled by updateSalesOrderStatus on the backend
-                    // if createSalesOrder sets it to Pending then calls updateSalesOrderStatus.
-                    // Or, createSalesOrder itself needs to handle deduction if status is Fulfilled.
-                    // For this client-side, we assume backend handles it if created as Fulfilled.
-                    console.log("New order created as Fulfilled. Backend should have handled stock deduction.");
-                }
             }
 
             if (result && result.success) {
                 setSuccessMessage(result.message || `Sales Order ${isEditing ? 'status updated' : 'created'} successfully!`);
                 setTimeout(() => {
+                    setSuccessMessage(''); // Clear message before navigating
                     navigate('/sales-orders');
                 }, 2000);
             } else {
-                setError(result?.message || `Failed to ${isEditing ? 'update' : 'create'} sales order.`);
+                if (result && result.isStockError) {
+                    setError(result.message);
+                    if (!isEditing && formData.status === 'Fulfilled') {
+                        setFormData(prev => ({ ...prev, status: 'Pending' }));
+                    }
+                } else {
+                    setError(result?.message || `Failed to ${isEditing ? 'update' : 'create'} sales order.`);
+                }
             }
         } catch (err) {
             console.error("Error submitting sales order:", err);
@@ -253,12 +275,10 @@ function SalesOrderFormPage({ currentUser }) {
         }
     };
 
-    // Determine if form fields related to items/pricing should be disabled
     const disableOrderFields = isEditing && (formData.status === 'Fulfilled' || formData.status === 'Cancelled');
 
-
     if (isLoading) return <div className="page-container" style={{textAlign: 'center', padding: '2rem'}}>Loading order details...</div>;
-    if (formData.status === 'ErrorLoading' && isEditing) { // Handle case where order load failed
+    if (formData.status === 'ErrorLoading' && isEditing) {
          return (
             <div className="sales-order-form-page page-container">
                  <header className="page-header-alt">
@@ -272,7 +292,6 @@ function SalesOrderFormPage({ currentUser }) {
         );
     }
 
-
     return (
         <div className="sales-order-form-page page-container">
             <header className="page-header-alt">
@@ -284,8 +303,8 @@ function SalesOrderFormPage({ currentUser }) {
                 </div>
             </header>
 
-            {error && <div className="error-message card">{error}</div>}
-            {successMessage && <div className="success-message card">{successMessage}</div>}
+            {error && <div className="error-message card" role="alert">{error}</div>}
+            {successMessage && <div className="success-message card" role="status">{successMessage}</div>}
 
             <form onSubmit={handleSubmit} className="sales-order-form card">
                 <h4>Order Details</h4>
@@ -296,15 +315,26 @@ function SalesOrderFormPage({ currentUser }) {
                     </div>
                     <div className="form-group form-group-inline">
                         <label htmlFor="status">Status *</label>
-                        <select id="status" name="status" value={formData.status} onChange={handleChange} required className="form-control"
-                            disabled={isOrderLocked || (formData.status === 'Fulfilled' && !canFulfillOrder && isEditing && originalStatus !== 'Fulfilled' )}>
+                        <select
+                            id="status"
+                            name="status"
+                            value={formData.status}
+                            onChange={handleChange}
+                            required
+                            className="form-control"
+                            disabled={isOrderLocked || (isEditing && originalStatus === 'Fulfilled' && !canFulfillOrder) || (isEditing && originalStatus === 'Cancelled')}
+                        >
                             {ORDER_STATUSES.map(s => (
-                                <option key={s} value={s} disabled={s === 'Fulfilled' && !canFulfillOrder && originalStatus !== 'Fulfilled'}>
+                                <option
+                                    key={s}
+                                    value={s}
+                                    disabled={(s === 'Fulfilled' && !canFulfillOrder && (!isEditing || originalStatus !== 'Fulfilled')) || (isEditing && originalStatus === 'Fulfilled' && s !== 'Fulfilled' && !canFulfillOrder) || (isEditing && originalStatus === 'Cancelled' && s !== 'Cancelled')}
+                                >
                                     {s}
                                 </option>
                             ))}
                         </select>
-                         {formData.status === 'Fulfilled' && !canFulfillOrder && originalStatus !== 'Fulfilled' && <small className="error-text">Requires admin/manager to fulfill.</small>}
+                         {formData.status === 'Fulfilled' && !canFulfillOrder && (!isEditing || originalStatus !== 'Fulfilled') && <small className="error-text-small">Requires admin/manager to fulfill.</small>}
                     </div>
                 </div>
                 <div className="form-group">
@@ -317,6 +347,7 @@ function SalesOrderFormPage({ currentUser }) {
                         onChange={handleCustomerChange}
                         isClearable
                         placeholder="Select customer..."
+                        styles={reactSelectStyles} // Apply styles
                         classNamePrefix="react-select"
                         isDisabled={disableOrderFields}
                     />
@@ -327,30 +358,31 @@ function SalesOrderFormPage({ currentUser }) {
                 {formData.items.map((item, index) => (
                     <div key={index} className="line-item-row form-row">
                         <div className="form-group" style={{flex: 3}}>
-                            <label>Product/Bundle *</label>
+                            <label htmlFor={`product-item-${index}`}>Product/Bundle *</label>
                             <Select
+                                inputId={`product-item-${index}`}
                                 options={productsAndBundles}
                                 value={productsAndBundles.find(p => p.value === item.productId)}
                                 onChange={(selected) => handleItemLineChange(index, 'productId', selected ? selected.value : null)}
                                 placeholder="Select Item or Bundle..."
-                                required
+                                styles={reactSelectStyles} // Apply styles
                                 classNamePrefix="react-select"
                                 isDisabled={disableOrderFields}
                             />
                         </div>
                         <div className="form-group" style={{flex: 1, minWidth: '80px'}}>
-                            <label>Qty *</label>
-                            <input type="number" value={item.quantity} onChange={(e) => handleItemLineChange(index, 'quantity', e.target.value)} min="1" required className="form-control" disabled={disableOrderFields}/>
+                            <label htmlFor={`product-qty-${index}`}>Qty *</label>
+                            <input id={`product-qty-${index}`} type="number" value={item.quantity} onChange={(e) => handleItemLineChange(index, 'quantity', e.target.value)} min="1" required className="form-control" disabled={disableOrderFields}/>
                         </div>
                         <div className="form-group" style={{flex: 1, minWidth: '100px'}}>
-                            <label>Unit Price *</label>
-                            <input type="number" value={item.unitPrice} onChange={(e) => handleItemLineChange(index, 'unitPrice', e.target.value)} min="0" step="0.01" required className="form-control" disabled={disableOrderFields}/>
+                            <label htmlFor={`product-price-${index}`}>Unit Price *</label>
+                            <input id={`product-price-${index}`} type="number" value={item.unitPrice} onChange={(e) => handleItemLineChange(index, 'unitPrice', e.target.value)} min="0" step="0.01" required className="form-control" disabled={disableOrderFields}/>
                         </div>
-                        <div className="form-group" style={{flex: 1, textAlign:'right', paddingTop: '1.8rem', minWidth: '120px'}}>
-                            <span>Line Total: {((Number(item.quantity) || 0) * (Number(item.unitPrice) || 0)).toFixed(2)}</span>
+                        <div className="form-group line-item-total" style={{flex: 1, minWidth: '120px'}}>
+                            <span>Php {((Number(item.quantity) || 0) * (Number(item.unitPrice) || 0)).toFixed(2)}</span>
                         </div>
                         {formData.items.length > 1 && !disableOrderFields && (
-                            <div style={{display: 'flex', alignItems: 'flex-end', paddingBottom: 'calc(var(--spacing-unit) * 1.75 / 2)' /* Align with input bottom padding */}}>
+                            <div className="line-item-actions">
                                <button type="button" onClick={() => removeLineItem(index)} className="button-delete-component" title="Remove Item"><FaTrashAlt /></button>
                             </div>
                         )}
@@ -358,7 +390,7 @@ function SalesOrderFormPage({ currentUser }) {
                 ))}
                 {!disableOrderFields &&
                     <button type="button" onClick={addLineItem} className="button button-secondary add-component-btn" style={{marginBottom: '1rem'}}>
-                        <FaPlusCircle style={{marginRight: '5px'}} /> Add Line Item
+                        <FaPlusCircle style={{marginRight: '8px'}} /> Add Line Item
                     </button>
                 }
 
@@ -373,8 +405,8 @@ function SalesOrderFormPage({ currentUser }) {
 
                 <div className="form-actions" style={{marginTop: '2rem'}}>
                     <button type="submit" className="button button-primary save-button"
-                        disabled={isSubmitting || isLoading || isOrderLocked || (formData.status === 'Fulfilled' && originalStatus === 'Fulfilled' && !isSubmitting) }>
-                        <FaSave style={{marginRight: '5px'}}/>
+                        disabled={isSubmitting || isLoading || isOrderLocked || (isEditing && formData.status === 'Fulfilled' && originalStatus === 'Fulfilled' && !isSubmitting) }>
+                        <FaSave style={{marginRight: '8px'}}/>
                         {isSubmitting ? 'Saving...' : (isEditing ? 'Update Order' : 'Create Sales Order')}
                     </button>
                 </div>

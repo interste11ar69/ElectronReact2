@@ -236,3 +236,7 @@ select.filter-dropdown.standalone-filter.storage-filter-full-width {
 #itemTable thead th[onClick]:hover {
     background-color: var(--color-table-row-hover); /* Or a slightly darker header bg */
 }
+/* In ItemManagementPage.css or index.css */
+#itemTable .quantity-cell { /* Or just .quantity-cell if globally unique */
+  text-align: center !important; /* Use !important only if necessary to override other styles */
+}

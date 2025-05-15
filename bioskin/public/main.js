@@ -238,19 +238,35 @@ app.whenReady().then(() => {
         }
     });
 
-    ipcMain.handle('create-item', async (event, itemData) => {
-         console.log('[main.js] IPC create-item called with data:', itemData);
+    ipcMain.handle('create-item', async (event, itemPayload) => {
+        // itemPayload from frontend should now be:
+        // { itemData: {name, sku, ...}, initialStockEntries: [{locationId, quantity, locationName}, ...] }
+        console.log('[main.js] IPC create-item called with payload:', JSON.stringify(itemPayload, null, 2));
+        const user = currentUser;
+        if (!user) {
+            return { success: false, message: "User not authenticated." };
+        }
+
         try {
-            const result = await db.createItem(itemData);
+            // Destructure the payload from the frontend
+            const { itemData, initialStockEntries } = itemPayload;
+
+            if (!itemData || !itemData.name) { // Basic validation
+                return { success: false, message: "Item name is required."};
+            }
+
+            // Pass user details for logging initial stock
+            const result = await db.createItem(itemData, initialStockEntries || [], user.id, user.username);
+
             if (result.success && result.item) {
-                logActivity(currentUser?.username, 'Added inventory item', `Name: ${result.item.name}, SKU: ${result.item.sku || 'N/A'}`);
+                logActivity(user.username, 'Added inventory item', `Name: ${result.item.name}, SKU: ${result.item.sku || 'N/A'}, ID: ${result.item.id}`);
             } else {
-                 logActivity(currentUser?.username, 'Failed to add item', result.message || 'Unknown DB error');
+                logActivity(user.username, 'Failed to add item', result.message || 'Unknown DB error');
             }
             return result;
         } catch (error) {
-            console.error('[main.js] Error creating item:', itemData, error);
-             logActivity(currentUser?.username, 'Error creating item', error.message);
+            console.error('[main.js] Error creating item:', itemPayload, error);
+            logActivity(currentUser?.username, 'Error creating item', error.message);
             return { success: false, message: error.message || 'Unexpected error creating item.' };
         }
     });
@@ -1105,57 +1121,73 @@ ipcMain.handle('get-returns', async (event, filters) => {
 });
  // --- Stock Adjustment Handler ---
     ipcMain.handle('perform-stock-adjustment', async (event, adjustmentDetails) => {
-        console.log(`[Main Process] perform-stock-adjustment handler invoked with details:`, adjustmentDetails);
+        // Expected adjustmentDetails: { itemId, locationId, adjustmentQuantity, reason, notes, userId, username }
+        console.log(`[Main Process] perform-stock-adjustment handler invoked with details:`, JSON.stringify(adjustmentDetails, null, 2));
         const username = currentUser?.username;
-        let itemNameForLog = `ID ${adjustmentDetails?.itemId || 'Unknown'}`; // Default log detail
+        let itemNameForLog = `ID ${adjustmentDetails?.itemId || 'Unknown'}`;
+        let locationNameForLog = `ID ${adjustmentDetails?.locationId || 'Unknown'}`; // For logging
 
         try {
-            // --- Validation (as before) ---
-            if (!adjustmentDetails || adjustmentDetails.itemId === undefined || typeof adjustmentDetails.adjustmentQuantity !== 'number') {
-                // ... (error handling)
-                logActivity(username, 'Stock Adjustment Error', `Invalid details (itemId/qty). Provided: ${JSON.stringify(adjustmentDetails)}`);
-                return { success: false, message: 'Invalid adjustment details: Item ID and numerical quantity are required.' };
+            // --- VALIDATION: Now includes locationId ---
+            if (
+                !adjustmentDetails ||
+                adjustmentDetails.itemId === undefined || adjustmentDetails.itemId === null ||
+                adjustmentDetails.locationId === undefined || adjustmentDetails.locationId === null || // Check for locationId
+                typeof adjustmentDetails.adjustmentQuantity !== 'number'
+            ) {
+                const errorMsg = `Invalid details (itemId/locationId/qty). Provided: ${JSON.stringify(adjustmentDetails)}`;
+                logActivity(username, 'Stock Adjustment Error', errorMsg);
+                return { success: false, message: 'Invalid adjustment details: Item ID, Location ID, and numerical Quantity are required.' };
             }
             if (!adjustmentDetails.reason || String(adjustmentDetails.reason).trim() === '') {
-                // ... (error handling)
-                logActivity(username, 'Stock Adjustment Error', `Reason missing for item ${itemNameForLog}.`);
+                const errorMsg = `Reason missing for item ${itemNameForLog} at location ${locationNameForLog}.`;
+                logActivity(username, 'Stock Adjustment Error', errorMsg);
                 return { success: false, message: 'Reason for adjustment is required.' };
             }
             if (String(adjustmentDetails.reason).toLowerCase().includes('other') && (!adjustmentDetails.notes || String(adjustmentDetails.notes).trim() === '')) {
-                // ... (error handling)
-                logActivity(username, 'Stock Adjustment Error', `Notes missing for "Other" reason for item ${itemNameForLog}.`);
+                const errorMsg = `Notes missing for "Other" reason for item ${itemNameForLog} at location ${locationNameForLog}.`;
+                logActivity(username, 'Stock Adjustment Error', errorMsg);
                 return { success: false, message: 'Notes are required when the reason is "Other (Specify in Notes)".' };
             }
+            // --- END VALIDATION ---
 
-            // --- MODIFICATION START: Fetch item name for logging ---
+            // Fetch item name and location name for more descriptive logging
             try {
-                const item = await db.getItemById(adjustmentDetails.itemId);
+                const item = await db.getItemById(adjustmentDetails.itemId); // Assuming getItemById can provide item name
                 if (item && item.name) {
                     itemNameForLog = `${item.name} (ID: ${adjustmentDetails.itemId})`;
                 }
+                // To get location name, you might need a db.getStorageLocationById(id) or fetch it if not already in adjustmentDetails
+                // For now, we'll assume adjustmentDetails might send locationName, or we just use ID.
+                // If your Select on frontend sends { value: id, label: name } for location,
+                // then adjustmentDetails.selectedLocation.label would be the name.
+                // For simplicity, let's assume we log the location ID for now, or if you pass locationName from frontend.
+                if (adjustmentDetails.locationName) { // If frontend sends locationName
+                    locationNameForLog = `${adjustmentDetails.locationName} (ID: ${adjustmentDetails.locationId})`;
+                }
+
             } catch (fetchError) {
-                console.warn(`[main.js perform-stock-adjustment] Could not fetch item details for logging for ID ${adjustmentDetails.itemId}: ${fetchError.message}`);
-                // Continue with default itemNameForLog
+                console.warn(`[main.js perform-stock-adjustment] Could not fetch item/location details for logging: ${fetchError.message}`);
             }
-            // --- MODIFICATION END ---
 
             const mappedTransactionType = mapReasonToTransactionType(adjustmentDetails.reason);
-            console.log(`[main.js perform-stock-adjustment] User Reason: '${adjustmentDetails.reason}', Mapped Transaction Type: '${mappedTransactionType}' for item ${itemNameForLog}`);
+            console.log(`[main.js perform-stock-adjustment] User Reason: '${adjustmentDetails.reason}', Mapped Type: '${mappedTransactionType}' for ${itemNameForLog} at ${locationNameForLog}`);
 
             const transactionContext = {
                 transactionType: mappedTransactionType,
-                referenceId: null,
+                referenceId: null, // No specific reference for manual adjustments unless provided
                 referenceType: 'MANUAL_STOCK_ADJUSTMENT',
-                userId: adjustmentDetails.userId,
-                usernameSnapshot: adjustmentDetails.username,
+                userId: adjustmentDetails.userId, // Should be currentUser.id
+                usernameSnapshot: adjustmentDetails.username, // Should be currentUser.username
                 notes: `User Reason: ${adjustmentDetails.reason}. Details: ${adjustmentDetails.notes || 'N/A'}`
             };
 
-            console.log(`[main.js perform-stock-adjustment] Calling db.adjustStockQuantity for item ${itemNameForLog} with quantity ${adjustmentDetails.adjustmentQuantity} and context:`, transactionContext);
+            console.log(`[main.js perform-stock-adjustment] Calling db.adjustStockQuantity for ${itemNameForLog} at LocID ${adjustmentDetails.locationId} with Qty ${adjustmentDetails.adjustmentQuantity}`);
 
             const adjustmentResult = await db.adjustStockQuantity(
                 adjustmentDetails.itemId,
-                adjustmentDetails.adjustmentQuantity,
+                adjustmentDetails.locationId,         // <<< PASS locationId HERE
+                adjustmentDetails.adjustmentQuantity, // This is the numeric value
                 transactionContext
             );
             console.log('[main.js perform-stock-adjustment] db.adjustStockQuantity result:', adjustmentResult);
@@ -1164,19 +1196,16 @@ ipcMain.handle('get-returns', async (event, filters) => {
                 logActivity(
                     username,
                     'Performed Stock Adjustment',
-                    // --- MODIFICATION START: Use fetched item name in log details ---
-                    `Item: ${itemNameForLog}, Type: ${mappedTransactionType}, Adj By: ${adjustmentDetails.adjustmentQuantity}, NewQty: ${adjustmentResult.newQuantity}, ReasonGiven: ${adjustmentDetails.reason}`
-                    // --- MODIFICATION END ---
+                    `Item: ${itemNameForLog}, At Location: ${locationNameForLog}, Type: ${mappedTransactionType}, Adj By: ${adjustmentDetails.adjustmentQuantity}, New Qty@Loc: ${adjustmentResult.newQuantityAtLocation}, Reason: ${adjustmentDetails.reason}`
                 );
-                return { success: true, message: 'Stock adjusted successfully!', newQuantity: adjustmentResult.newQuantity };
+                // Return newQuantityAtLocation
+                return { success: true, message: 'Stock adjusted successfully!', newQuantityAtLocation: adjustmentResult.newQuantityAtLocation };
             } else {
                 console.error('[main.js perform-stock-adjustment] Stock adjustment failed in db client:', adjustmentResult.message);
                 logActivity(
                     username,
                     'Stock Adjustment Failed',
-                    // --- MODIFICATION START: Use fetched item name in log details ---
-                    `Item: ${itemNameForLog}, DB Error: ${adjustmentResult.message || 'Unknown DB error'}`
-                    // --- MODIFICATION END ---
+                    `Item: ${itemNameForLog}, At Location: ${locationNameForLog}, DB Error: ${adjustmentResult.message || 'Unknown DB error'}`
                 );
                 return { success: false, message: adjustmentResult.message || 'Failed to adjust stock.' };
             }
@@ -1186,30 +1215,21 @@ ipcMain.handle('get-returns', async (event, filters) => {
             logActivity(
                 username,
                 'Stock Adjustment Error',
-                // --- MODIFICATION START: Use fetched item name in log details ---
-                `Item: ${itemNameForLog}, Critical Error: ${error.message}`
-                // --- MODIFICATION END ---
+                `Item: ${itemNameForLog}, At Location: ${locationNameForLog}, Critical Error: ${error.message}`
             );
             return { success: false, message: `An unexpected error occurred: ${error.message}` };
         }
     });
 
-
 ipcMain.handle('get-bundles', async (event, filters) => {
     console.log('[Main Process] get-bundles handler invoked with filters:', filters);
-    // Add authorization if needed (e.g., only certain roles can view bundles)
-    // const user = currentUser;
-    // if (!user) return Promise.reject(new Error("Unauthorized: No user logged in"));
-
     try {
-        const bundles = await db.getBundles(filters || {}); // Pass filters to your db function
-        return bundles; // db.getBundles should return the array directly or throw an error
+        // The filters object from frontend might now contain storeLocationId
+        const bundles = await db.getBundles(filters || {});
+        return bundles;
     } catch (error) {
         console.error('[Main Process] Error in get-bundles handler:', error);
-        // Instead of returning an error object which might not be serializable well,
-        // re-throw the error so the invoke promise in preload rejects.
-        // The renderer's catch block will then handle it.
-        throw error; // Or throw new Error(`Failed to get bundles: ${error.message}`);
+        throw error;
     }
 });
 
@@ -1421,32 +1441,26 @@ ipcMain.handle('update-sales-order-status', async (event, { orderId, newStatus }
      }
  });
  // --- NEW STOCK TRANSFER IPC HANDLERS ---
-   ipcMain.handle('create-stock-transfer', async (event, transferDetailsFrontend) => {
+ ipcMain.handle('create-stock-transfer', async (event, transferDetailsFrontend) => {
+     // transferDetailsFrontend should include:
+     // itemId, quantityTransferred, sourceLocationId, destinationLocationId,
+     // sourceLocationName, destinationLocationName, notes, referenceNumber
      const user = currentUser;
      if (!user) return { success: false, message: "User not authenticated." };
-     // Add role check if only specific roles can perform transfers
 
      const transferDetailsForDB = {
        ...transferDetailsFrontend,
        userId: user.id,
        usernameSnapshot: user.username
      };
-
-     logActivity(user.username, 'Initiated Stock Transfer', `Item ID: ${transferDetailsForDB.itemId}, Qty: ${transferDetailsForDB.quantityTransferred}, From: ${transferDetailsForDB.sourceLocation}, To: ${transferDetailsForDB.destinationLocation}`);
+     // Log with names for better readability in activity log
+     logActivity(user.username, 'Initiated Stock Transfer', `Item ID: ${transferDetailsForDB.itemId}, Qty: ${transferDetailsForDB.quantityTransferred}, From Loc: ${transferDetailsForDB.sourceLocationName}(${transferDetailsForDB.sourceLocationId}), To Loc: ${transferDetailsForDB.destinationLocationName}(${transferDetailsForDB.destinationLocationId})`);
      try {
        const result = await db.createStockTransferAndAdjustInventory(transferDetailsForDB);
-       if (result.success) {
-         logActivity(user.username, 'Stock Transfer Successful', `Transfer ID: ${result.transfer.id}. ${result.message}`);
-       } else {
-         logActivity(user.username, 'Stock Transfer Failed', `Item ID: ${transferDetailsForDB.itemId}. Error: ${result.message}`);
-       }
+       if (result.success) { /* ... log success ... */ } else { /* ... log failure ... */ }
        return result;
-     } catch (error) {
-       console.error('[main.js] Error in create-stock-transfer handler:', error);
-       logActivity(user.username, 'Stock Transfer Critical Error', `Item ID: ${transferDetailsForDB.itemId}. Error: ${error.message}`);
-       return { success: false, message: `Critical error processing transfer: ${error.message}` };
-     }
-   });
+     } catch (error) { /* ... error handling ... */ }
+ });
 
    ipcMain.handle('get-stock-transfers', async (event, filters) => {
      try {
@@ -1457,5 +1471,33 @@ ipcMain.handle('update-sales-order-status', async (event, { orderId, newStatus }
        throw error; // Let preload/renderer handle promise rejection
      }
    });
+
+   ipcMain.handle('get-storage-locations', async () => {
+       console.log('[main.js] IPC get-storage-locations');
+       try {
+           return await db.getStorageLocations();
+       } catch (error) { /* ... error handling ... */ }
+   });
+   ipcMain.handle('get-store-location-id', async () => {
+       console.log('[main.js] IPC get-store-location-id');
+       try {
+           // Ensure db object is accessible here
+           const id = await db.getStoreLocationId(); // Call the helper in supabaseClient
+           return id;
+       } catch (error) {
+           console.error('[main.js] Error getting store location ID:', error);
+           return null; // Return null on error
+       }
+   });
+   ipcMain.handle('get-item-quantity-at-location', async (event, itemId, locationId) => {
+       console.log(`[main.js] IPC get-item-quantity-at-location for item ${itemId}, loc ${locationId}`);
+       try {
+           return await db.getItemQuantityAtLocation(itemId, locationId);
+       } catch (error) {
+           console.error('[main.js] Error in get-item-quantity-at-location handler:', error);
+           return 0; // Return 0 on error
+       }
+   });
+
 
 // --- END OF FILE ---

@@ -1,130 +1,41 @@
 // src/ReturnProcessingPage.js
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FaUndo, FaSave, FaHistory } from 'react-icons/fa'; // FaSearch and FaTimes are not used, can be removed
+import { FaUndo, FaSave, FaHistory } from 'react-icons/fa';
 import Select from 'react-select';
+import './ReturnProcessingPage.css'; // Import the CSS file
 
-// Basic styling (inline for this component)
-const styles = {
-    page: {
-        padding: '2rem',
-        // Assuming .page-container in a parent or global CSS handles max-width and centering
-    },
-    // --- MODIFICATION START: Added header and button styles ---
-    header: {
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        marginBottom: '1.5rem',
-        paddingBottom: '1rem',
-        borderBottom: '1px solid var(--color-border-soft, #eee)', // Use CSS var or fallback
-    },
-    headerTitle: {
-        margin: 0, // Remove default h1 margin
-        fontSize: '1.8em', // Match other page titles if desired
-        color: 'var(--color-text-dark, #333)'
-    },
-    viewHistoryButton: {
-        padding: '0.6rem 1.2rem',
-        border: '1px solid var(--color-primary-dark, #5C3221)',
-        borderRadius: 'var(--border-radius, 4px)',
-        cursor: 'pointer',
-        backgroundColor: 'var(--color-primary-light, #F5F0E8)',
-        color: 'var(--color-primary-dark, #5C3221)',
-        fontWeight: '500',
-        display: 'flex',
-        alignItems: 'center',
-        gap: '8px',
-        fontSize: '0.9em', // Slightly smaller than main action buttons
-        transition: 'background-color 0.2s ease, color 0.2s ease',
-    },
-    // --- MODIFICATION END ---
-    card: {
-        background: 'var(--color-surface, #fff)', // Use CSS var or fallback
-        padding: '2rem',
-        borderRadius: 'var(--border-radius-rounded, 8px)',
-        boxShadow: 'var(--box-shadow, 0 2px 8px rgba(0,0,0,0.1))',
-        marginBottom: '1rem',
-        border: '1px solid var(--color-border-soft, #eee)',
-    },
-    formGroup: {
-        marginBottom: '1.5rem'
-    },
-    label: {
-        display: 'block',
-        marginBottom: '0.5rem',
-        fontWeight: '600',
-        color: 'var(--color-text-medium, #555)'
-    },
-    input: { // Also used for select dropdowns for consistency
-        width: '100%',
-        padding: '0.8rem',
-        border: '1px solid var(--color-border-strong, #ccc)',
-        borderRadius: 'var(--border-radius, 4px)',
-        boxSizing: 'border-box',
-        fontSize: '1em',
-        backgroundColor: 'var(--color-surface, #fff)',
-        color: 'var(--color-text-dark, #333)',
-    },
-    select: {
-        // react-select specific styles can be passed via its `styles` prop if more customization is needed
-    },
-    textarea: {
-        width: '100%',
-        padding: '0.8rem',
-        border: '1px solid var(--color-border-strong, #ccc)',
-        borderRadius: 'var(--border-radius, 4px)',
-        minHeight: '80px',
-        boxSizing: 'border-box',
-        fontSize: '1em',
-        backgroundColor: 'var(--color-surface, #fff)',
-        color: 'var(--color-text-dark, #333)',
-    },
-    button: { // Base style for action buttons
-        padding: '0.8rem 1.5rem',
-        border: 'none',
-        borderRadius: 'var(--border-radius, 4px)',
-        cursor: 'pointer',
-        marginRight: '0.5rem',
-        fontWeight: '600', // Bolder action buttons
-        fontSize: '1em',
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: '8px',
-        transition: 'opacity 0.2s ease',
-    },
-    saveButton: {
-        backgroundColor: 'var(--color-primary-dark, #5C3221)',
-        color: 'var(--color-primary-light, #F5F0E8)',
-    },
-    cancelButton: {
-        backgroundColor: 'var(--color-surface-alt, #eee)', // Slightly different background
-        color: 'var(--color-text-dark, #333)',
-        border: '1px solid var(--color-border-strong, #ccc)',
-    },
-    error: { // For error messages
-        color: 'var(--color-status-danger, red)',
-        backgroundColor: 'rgba(211, 47, 47, 0.05)', // Lighter version of error bg
-        padding: '1rem', // Match card padding
-        // borderRadius: 'var(--border-radius-rounded, 8px)', // Inherited from card
-        // marginBottom: '1rem', // Inherited from card
-        border: '1px solid var(--color-status-danger, red)',
-        // boxShadow: 'var(--box-shadow, 0 2px 8px rgba(0,0,0,0.1))', // Inherited from card
-    },
-    success: { // For success messages
-        color: 'var(--color-status-success, green)',
-        backgroundColor: 'rgba(56, 142, 60, 0.05)', // Lighter version of success bg
-        padding: '1rem',
-        // borderRadius: 'var(--border-radius-rounded, 8px)',
-        // marginBottom: '1rem',
-        border: '1px solid var(--color-status-success, green)',
-        // boxShadow: 'var(--box-shadow, 0 2px 8px rgba(0,0,0,0.1))',
-    },
-    // searchResult and searchResultHover are not used in this component currently
+// react-select custom styles (can also be moved to CSS with global overrides or a wrapper)
+const reactSelectStyles = {
+    control: (baseStyles, state) => ({
+        ...baseStyles,
+        borderColor: state.isFocused ? 'var(--color-primary-dark, #5C3221)' : 'var(--color-border-strong, #ccc)',
+        minHeight: 'calc(0.8rem * 2 + 1em + 2px)', // Matches input padding and line height approximately
+        padding: '0.1rem',
+        boxShadow: state.isFocused ? '0 0 0 0.2rem var(--focus-ring-color, rgba(92, 50, 33, 0.25))' : 'none',
+        '&:hover': {
+            borderColor: 'var(--color-border-strong, #999)',
+        },
+        fontSize: '1em', // Ensure consistent font size with inputs
+    }),
+    valueContainer: (baseStyles) => ({
+        ...baseStyles,
+        padding: '0px 6px'
+    }),
+    input: (baseStyles) => ({
+        ...baseStyles,
+        margin: '0px',
+        padding: '0px'
+    }),
+    placeholder: (baseStyles) => ({
+        ...baseStyles,
+        color: 'var(--color-text-light, #aaa)',
+    }),
+    menu: base => ({ ...base, zIndex: 20 }) // Ensure dropdown menu is on top
 };
 
 
-function ReturnProcessingPage({ currentUser }) { // Added currentUser prop
+function ReturnProcessingPage({ currentUser }) {
     const navigate = useNavigate();
     const [selectedItem, setSelectedItem] = useState(null);
     const [quantityReturned, setQuantityReturned] = useState(1);
@@ -132,6 +43,9 @@ function ReturnProcessingPage({ currentUser }) { // Added currentUser prop
     const [condition, setCondition] = useState('');
     const [notes, setNotes] = useState('');
     const [selectedCustomer, setSelectedCustomer] = useState(null);
+    const [selectedReturnLocation, setSelectedReturnLocation] = useState(null);
+    const [storageLocationOptions, setStorageLocationOptions] = useState([]);
+    const [isLocationsLoading, setIsLocationsLoading] = useState(false);
 
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [error, setError] = useState('');
@@ -146,42 +60,45 @@ function ReturnProcessingPage({ currentUser }) { // Added currentUser prop
     const conditionOptions = ['Resellable', 'Damaged', 'Requires Inspection', 'Open Box'];
 
     useEffect(() => {
-        const loadItems = async () => {
+        const loadInitialData = async () => {
             setIsItemsLoading(true);
+            setIsCustomersLoading(true);
+            setIsLocationsLoading(true);
             try {
-                const items = await window.electronAPI.getItems({ is_archived: false }); // Fetch only active items
-                const options = items.map(item => ({
-                    value: item.id,
-                    label: `${item.name} ${item.variant ? `(${item.variant})` : ''} - SKU: ${item.sku || 'N/A'}`
-                }));
-                setItemOptions(options);
+                const [itemsRes, customersRes, locationsRes] = await Promise.all([
+                    window.electronAPI.getItems({ is_archived: false }),
+                    window.electronAPI.getCustomers({}),
+                    window.electronAPI.getStorageLocations()
+                ]);
+
+                if (itemsRes && Array.isArray(itemsRes)) {
+                    setItemOptions(itemsRes.map(item => ({
+                        value: item.id,
+                        label: `${item.name} ${item.variant ? `(${item.variant})` : ''} - SKU: ${item.sku || 'N/A'}`
+                    })));
+                } else { throw new Error("Failed to load items or invalid format."); }
+
+                if (customersRes && Array.isArray(customersRes)) {
+                    setCustomerOptions(customersRes.map(cust => ({ value: cust.id, label: cust.full_name })));
+                } else { console.warn("Failed to load customers or invalid format."); }
+
+                if (locationsRes && locationsRes.success && Array.isArray(locationsRes.locations)) {
+                    setStorageLocationOptions(locationsRes.locations.map(loc => ({ value: loc.id, label: loc.name })));
+                } else {
+                    console.warn("Failed to load storage locations. Please ensure backend is set up.", locationsRes);
+                    setError("Could not load storage locations. Please check system configuration.");
+                }
+
             } catch (err) {
-                console.error("Error fetching items for dropdown:", err);
-                setError('Could not load product list.');
+                console.error("Error loading initial data for return page:", err);
+                setError('Could not load all necessary data. ' + err.message);
             } finally {
                 setIsItemsLoading(false);
-            }
-        };
-        loadItems();
-    }, []);
-
-     useEffect(() => {
-        const loadCustomers = async () => {
-            setIsCustomersLoading(true);
-            try {
-                const customers = await window.electronAPI.getCustomers({});
-                 const options = customers.map(cust => ({
-                    value: cust.id,
-                    label: `${cust.full_name}`
-                 }));
-                 setCustomerOptions(options);
-            } catch (err) {
-                console.error("Error fetching customers for dropdown:", err);
-            } finally {
                 setIsCustomersLoading(false);
+                setIsLocationsLoading(false);
             }
         };
-        loadCustomers();
+        loadInitialData();
     }, []);
 
     const handleSubmit = async (e) => {
@@ -198,22 +115,25 @@ function ReturnProcessingPage({ currentUser }) { // Added currentUser prop
              setError('Quantity must be a positive number.');
              return;
         }
+        if (condition === 'Resellable' && !selectedReturnLocation) {
+            setError('Please select a location to return the "Resellable" item to.');
+            return;
+        }
 
         setIsSubmitting(true);
-
         const returnDetails = {
             itemId: selectedItem.value,
             quantityReturned: qty,
             reason: reason,
             condition: condition,
             customerId: selectedCustomer ? selectedCustomer.value : null,
-            notes: notes,
-            // processed_by_user_id will be added by main.js from currentUser
+            notes: notes.trim(),
+            returnToLocationId: condition === 'Resellable' ? selectedReturnLocation?.value : null,
+            returnToLocationName: condition === 'Resellable' ? selectedReturnLocation?.label : null,
         };
 
         try {
             const result = await window.electronAPI.processReturn(returnDetails);
-
             if (result.success) {
                 setSuccessMessage(result.message || 'Return processed successfully!');
                 setSelectedItem(null);
@@ -222,7 +142,8 @@ function ReturnProcessingPage({ currentUser }) { // Added currentUser prop
                 setCondition('');
                 setNotes('');
                 setSelectedCustomer(null);
-                 setTimeout(() => setSuccessMessage(''), 5000);
+                setSelectedReturnLocation(null);
+                 setTimeout(() => setSuccessMessage(''), 7000);
             } else {
                 setError(result.message || 'Failed to process return.');
             }
@@ -234,25 +155,31 @@ function ReturnProcessingPage({ currentUser }) { // Added currentUser prop
         }
     };
 
+    useEffect(() => {
+        if (condition !== 'Resellable') {
+            setSelectedReturnLocation(null);
+        }
+    }, [condition]);
+
     return (
-        <div style={styles.page} className="page-container"> {/* Added global page-container class */}
-            <header style={styles.header}> {/* Using header style from const */}
-                <h1 style={styles.headerTitle}>Process Product Return</h1>
+        <div className="return-processing-page page-container">
+            <header className="page-header-alt rpp-header"> {/* Added rpp-header class */}
+                <h1 className="rpp-header-title">Process Product Return</h1>
                 <button
-                    style={styles.viewHistoryButton}
+                    className="button button-outline view-history-btn" // Use global button classes
                     onClick={() => navigate('/returns')}
                     title="View all processed returns"
                 >
-                    <FaHistory /> View Return History
+                    <FaHistory style={{ marginRight: '8px' }} /> View Return History
                 </button>
             </header>
 
-             {error && <div style={{...styles.card, ...styles.error}}>{error}</div>}
-             {successMessage && <div style={{...styles.card, ...styles.success}}>{successMessage}</div>}
+             {error && <div className="error-message card">{error}</div>}
+             {successMessage && <div className="success-message card">{successMessage}</div>}
 
-            <form onSubmit={handleSubmit} style={styles.card}>
-                <div style={styles.formGroup}>
-                    <label htmlFor="itemSelect" style={styles.label}>Select Item Returned *</label>
+            <form onSubmit={handleSubmit} className="card rpp-form"> {/* Added rpp-form class */}
+                <div className="form-group">
+                    <label htmlFor="itemSelect" className="form-label">Select Item Returned *</label>
                     <Select
                         id="itemSelect"
                         options={itemOptions}
@@ -260,66 +187,58 @@ function ReturnProcessingPage({ currentUser }) { // Added currentUser prop
                         onChange={setSelectedItem}
                         isLoading={isItemsLoading}
                         isClearable
-                        placeholder="Search or select product by Name/SKU..."
-                        styles={{
-                            control: (baseStyles) => ({
-                                ...baseStyles,
-                                borderColor: 'var(--color-border-strong, #ccc)',
-                                minHeight: 'calc(0.8rem * 2 + 1em + 2px)', // Approximate match to input padding
-                                padding: '0.1rem', // Slight inner padding for select
-                            }),
-                            container: (base) => ({ ...base, zIndex: 10 })
-                        }}
+                        placeholder="Search or select product..."
+                        styles={{...reactSelectStyles, container: (base) => ({ ...base, zIndex: 10 })}}
+                        classNamePrefix="react-select" // For easier global CSS targeting if needed
                         required
                     />
                 </div>
 
-                 <div style={styles.formGroup}>
-                    <label htmlFor="quantity" style={styles.label}>Quantity Returned *</label>
-                    <input
-                        id="quantity"
-                        type="number"
-                        min="1"
-                        value={quantityReturned}
-                        onChange={(e) => setQuantityReturned(e.target.value)}
-                        style={styles.input}
-                        required
-                    />
+                 <div className="form-group">
+                    <label htmlFor="quantity" className="form-label">Quantity Returned *</label>
+                    <input id="quantity" type="number" min="1" value={quantityReturned}
+                        onChange={(e) => setQuantityReturned(e.target.value)} className="form-control" required />
                 </div>
 
-                 <div style={styles.formGroup}>
-                    <label htmlFor="reason" style={styles.label}>Reason for Return *</label>
-                    <select
-                        id="reason"
-                        value={reason}
-                        onChange={(e) => setReason(e.target.value)}
-                        style={styles.input}
-                        required
-                    >
+                 <div className="form-group">
+                    <label htmlFor="reason" className="form-label">Reason for Return *</label>
+                    <select id="reason" value={reason} onChange={(e) => setReason(e.target.value)} className="form-control" required >
                         <option value="" disabled>-- Select Reason --</option>
                         {reasonOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}
                     </select>
                  </div>
 
-                 <div style={styles.formGroup}>
-                    <label htmlFor="condition" style={styles.label}>Item Condition *</label>
-                    <select
-                        id="condition"
-                        value={condition}
-                        onChange={(e) => setCondition(e.target.value)}
-                        style={styles.input}
-                        required
-                    >
+                 <div className="form-group">
+                    <label htmlFor="condition" className="form-label">Item Condition *</label>
+                    <select id="condition" value={condition} onChange={(e) => setCondition(e.target.value)} className="form-control" required >
                         <option value="" disabled>-- Select Condition --</option>
                          {conditionOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}
                     </select>
-                     <small style={{display: 'block', marginTop: '5px', color: 'var(--color-text-light, #777)'}}>
-                         Select 'Resellable' ONLY if the item can go directly back into stock.
-                     </small>
                  </div>
 
-                <div style={styles.formGroup}>
-                    <label htmlFor="customerSelect" style={styles.label}>Customer (Optional)</label>
+                {condition === 'Resellable' && (
+                    <div className="form-group">
+                        <label htmlFor="returnLocation" className="form-label">Return to Location *</label>
+                        <Select
+                            id="returnLocation"
+                            options={storageLocationOptions}
+                            value={selectedReturnLocation}
+                            onChange={setSelectedReturnLocation}
+                            isLoading={isLocationsLoading}
+                            isClearable
+                            placeholder="Select location to restock..."
+                            styles={{...reactSelectStyles, container: (base) => ({ ...base, zIndex: 9 })}}
+                            classNamePrefix="react-select"
+                            required={condition === 'Resellable'}
+                        />
+                         <small className="form-text text-muted"> {/* Assuming global .form-text .text-muted */}
+                            This item will be added back to stock at the selected location.
+                        </small>
+                    </div>
+                )}
+
+                <div className="form-group">
+                    <label htmlFor="customerSelect" className="form-label">Customer (Optional)</label>
                     <Select
                         id="customerSelect"
                         options={customerOptions}
@@ -328,47 +247,26 @@ function ReturnProcessingPage({ currentUser }) { // Added currentUser prop
                         isLoading={isCustomersLoading}
                         isClearable
                         placeholder="Search or select customer..."
-                        styles={{
-                             control: (baseStyles) => ({
-                                ...baseStyles,
-                                borderColor: 'var(--color-border-strong, #ccc)',
-                                minHeight: 'calc(0.8rem * 2 + 1em + 2px)',
-                                padding: '0.1rem',
-                            }),
-                            container: (base) => ({ ...base, zIndex: 9 })
-                        }}
+                        styles={{...reactSelectStyles, container: (base) => ({ ...base, zIndex: 8 })}}
+                        classNamePrefix="react-select"
                     />
                 </div>
 
-                 <div style={styles.formGroup}>
-                    <label htmlFor="notes" style={styles.label}>Notes (Optional)</label>
-                    <textarea
-                        id="notes"
-                        value={notes}
-                        onChange={(e) => setNotes(e.target.value)}
-                        style={styles.textarea}
-                        rows="3"
-                        placeholder="Any additional details about the return..."
-                    />
+                 <div className="form-group">
+                    <label htmlFor="notes" className="form-label">Notes (Optional)</label>
+                    <textarea id="notes" value={notes} onChange={(e) => setNotes(e.target.value)}
+                        className="form-control" rows="3" placeholder="Any additional details about the return..." />
                  </div>
 
-                 <div style={{ textAlign: 'right', marginTop: '2rem' }}>
-                    <button
-                        type="button"
-                        onClick={() => navigate('/')} // Or navigate back to dashboard
-                        style={{...styles.button, ...styles.cancelButton}}
-                        disabled={isSubmitting}
-                        className="button button-secondary" // Added global button classes
-                    >
+                 <div className="form-actions rpp-form-actions"> {/* Added rpp-form-actions class */}
+                    <button type="button" onClick={() => navigate(-1)}
+                        className="button button-secondary" disabled={isSubmitting}>
                          Cancel
                     </button>
-                     <button
-                        type="submit"
-                        style={{...styles.button, ...styles.saveButton}}
-                        disabled={isSubmitting || !selectedItem || !reason || !condition || parseInt(quantityReturned) <= 0}
-                        className="button button-primary" // Added global button classes
-                     >
-                        <FaSave /> {/* Icon already has margin from gap in styles.button */}
+                     <button type="submit"
+                        className="button button-primary"
+                        disabled={isSubmitting || !selectedItem || !reason || !condition || parseInt(quantityReturned) <= 0 || (condition === 'Resellable' && !selectedReturnLocation)} >
+                        <FaSave style={{ marginRight: '8px' }} />
                         {isSubmitting ? 'Processing...' : 'Process Return'}
                      </button>
                  </div>

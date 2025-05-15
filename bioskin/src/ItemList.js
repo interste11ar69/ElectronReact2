@@ -1,30 +1,31 @@
 // src/ItemList.js
 import React from 'react';
-import { FaArchive, FaUndo } from 'react-icons/fa'; // FaUndo for unarchive
+import { FaArchive, FaUndo, FaEdit } from 'react-icons/fa'; // Added FaEdit for consistency
 
-// ... (getStockStatusClass, getStockStatusText functions) ...
-const getStockStatusClass = (quantity, isArchived) => { // Added isArchived
-    if (isArchived) return 'stock-status-archived'; // New status for archived
-    if (quantity <= 0) return 'stock-status-low';
-    if (quantity < 10) return 'stock-status-low';
-    if (quantity < 50) return 'stock-status-moderate';
+// --- MODIFICATION: getStockStatusClass and getStockStatusText now use total_quantity if available ---
+const getStockStatusClass = (quantity, isArchived) => {
+    if (isArchived) return 'stock-status-archived';
+    const numQuantity = Number(quantity); // Ensure it's a number
+    if (numQuantity <= 0) return 'stock-status-low';
+    if (numQuantity < 10) return 'stock-status-low';
+    if (numQuantity < 50) return 'stock-status-moderate';
     return 'stock-status-high';
 };
-const getStockStatusText = (quantity, isArchived) => { // Added isArchived
+
+const getStockStatusText = (quantity, isArchived) => {
     if (isArchived) return 'ARCHIVED';
-    if (quantity <= 0) return 'OUT OF STOCK';
-    if (quantity < 10) return 'LOW';
-    if (quantity < 50) return 'MODERATE';
+    const numQuantity = Number(quantity);
+    if (numQuantity <= 0) return 'OUT OF STOCK';
+    if (numQuantity < 10) return 'LOW';
+    if (numQuantity < 50) return 'MODERATE';
     return 'HIGH';
 };
+// --- END MODIFICATION ---
 
-// --- MODIFICATION START: Accept viewingArchived prop, rename onDelete to onArchive ---
 function ItemList({ items, onEdit, onDelete: onArchiveItem, userRole, onSort, currentSortBy, currentSortOrder, viewingArchived }) {
-// --- MODIFICATION END ---
     if (!items) {
         return <div className="loading-placeholder" style={{ padding: '2rem', textAlign: 'center' }}>No inventory data available.</div>;
     }
-    // No items message adjusted slightly
     if (items.length === 0) {
          return (
             <div className="loading-placeholder" style={{ padding: '2rem', textAlign: 'center' }}>
@@ -54,53 +55,53 @@ function ItemList({ items, onEdit, onDelete: onArchiveItem, userRole, onSort, cu
                     <SortableHeader columnName="name">Product</SortableHeader>
                     <th>Variant</th>
                     <SortableHeader columnName="sku">SKU Code</SortableHeader>
-                    <SortableHeader columnName="quantity" className="text-right">Quantity</SortableHeader>
+                    {/* --- MODIFICATION: Header now refers to 'total_quantity' for sorting --- */}
+                    <SortableHeader columnName="total_quantity" className="text-right">Quantity (Total)</SortableHeader>
+                    {/* --- END MODIFICATION --- */}
                     <SortableHeader columnName="cost_price" className="text-right">Price</SortableHeader>
-                    <th className="text-center">Stock Status</th>
+                    <th className="text-center">Stock Status</th> {/* This is derived, not directly sortable from a single DB field easily */}
                     <th className="text-center">Actions</th>
                 </tr>
             </thead>
             <tbody id="itemTableBody">
                 {items.map(item => (
+                    // item object now should have 'total_quantity' from the view
                     <tr key={item.id} style={item.is_archived ? { backgroundColor: '#f8f9fa', opacity: 0.7 } : {}}>
                         <td>{item.name}</td>
                         <td>{item.variant || 'N/A'}</td>
                         <td>{item.sku || 'N/A'}</td>
-                        <td className="text-right">{item.is_archived ? 'N/A' : item.quantity}</td>
-                        <td className="text-right">
+                        {/* --- MODIFICATION: Display item.total_quantity --- */}
+                        <td className="text-center">{item.is_archived ? 'N/A' : (item.total_quantity !== undefined ? item.total_quantity : 'Err')}</td>
+                        {/* --- END MODIFICATION --- */}
+                        <td className="text-center  ">
                             {item.is_archived ? 'N/A' : (item.cost_price !== null && item.cost_price !== undefined ? `Php ${Number(item.cost_price).toFixed(2)}` : 'N/A')}
                         </td>
-                        {/* --- MODIFICATION START: Pass item.is_archived to status functions --- */}
-                        <td className={`text-center ${getStockStatusClass(item.quantity, item.is_archived)}`}>
-                            {getStockStatusText(item.quantity, item.is_archived)}
+                        {/* --- MODIFICATION: Pass item.total_quantity to status functions --- */}
+                        <td className={`text-center ${getStockStatusClass(item.total_quantity, item.is_archived)}`}>
+                            {getStockStatusText(item.total_quantity, item.is_archived)}
                         </td>
-                        {/* --- MODIFICATION END --- */}
+                        {/* --- END MODIFICATION --- */}
                         <td className="text-center table-actions">
-                            {/* --- MODIFICATION START: Adjust Edit button for archived items --- */}
                             <button
                                 className="button-edit"
                                 onClick={() => onEdit(item)}
-                                disabled={item.is_archived && viewingArchived} // Disable edit for archived items when viewing archived list
+                                disabled={item.is_archived && viewingArchived}
                                 title={item.is_archived && viewingArchived ? "Unarchive to edit" : "Edit Details"}
                             >
-                                Edit Details
+                                <FaEdit /> Edit Details {/* Added Icon */}
                             </button>
-                            {/* --- MODIFICATION END --- */}
-                            {/* --- MODIFICATION START: Change button to Archive/Unarchive --- */}
                             {userRole === 'admin' && onArchiveItem && (
                                 <button
-                                    className={item.is_archived ? "button-action" : "button-delete"} // Use a different style for unarchive if desired
+                                    className={item.is_archived ? "button-action button-unarchive" : "button-delete"} // Added button-unarchive for potential specific styling
                                     onClick={() => onArchiveItem(item.id, item.name, item.is_archived)}
-                                    title={item.is_archived ? "Unarchive this item" : "Archive this item"}
+                                    title={item.is_archived ? "Restore this item" : "Archive this item"}
                                 >
-                                    {item.is_archived ? <FaUndo /> : <FaArchive />} {item.is_archived ? 'Unarchive' : 'Archive'}
+                                    {item.is_archived ? <FaUndo /> : <FaArchive />} {item.is_archived ? 'Restore' : 'Archive'}
                                 </button>
                             )}
-                            {/* --- MODIFICATION END --- */}
                         </td>
                     </tr>
                 ))}
-                {/* This message is now handled by the check at the top of the component */}
             </tbody>
         </table>
     );

@@ -196,10 +196,7 @@ contextBridge.exposeInMainWorld(
         return ipcRenderer.invoke('get-inventory-transactions-for-item', { itemId: itemId, limit: limit, offset: offset });
     },
     // --- NEW STOCK TRANSFER FUNCTIONS ---
-      createStockTransfer: (transferDetails) => {
-        console.log('[Preload] Invoking "create-stock-transfer"', transferDetails);
-        return ipcRenderer.invoke('create-stock-transfer', transferDetails);
-      },
+      createStockTransfer: (transferDetails) => ipcRenderer.invoke('create-stock-transfer', transferDetails),
       getStockTransfers: (filters) => {
         console.log('[Preload] Invoking "get-stock-transfers"', filters);
         return ipcRenderer.invoke('get-stock-transfers', filters);
@@ -220,6 +217,12 @@ contextBridge.exposeInMainWorld(
           console.log('[Preload] Invoking "get-sales-by-status" with period:', period);
           return ipcRenderer.invoke('get-sales-by-status', period);
         },
+        getStorageLocations: () => ipcRenderer.invoke('get-storage-locations'),
+        getStoreLocationId: () => ipcRenderer.invoke('get-store-location-id'),
+        getItemQuantityAtLocation: (itemId, locationId) => ipcRenderer.invoke('get-item-quantity-at-location', itemId, locationId),
+
+         performStockAdjustment: (details) => ipcRenderer.invoke('perform-stock-adjustment', details),
+
     // --- MODIFICATION END ---
     // No comma after the last property in the object
   } // <--- This is the CORRECT closing brace for the 'electronAPI' object

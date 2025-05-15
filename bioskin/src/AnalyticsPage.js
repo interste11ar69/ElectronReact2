@@ -145,11 +145,23 @@ function AnalyticsPage() {
       } else console.warn("Category data invalid:", catRes);
 
       if (storageRes.success && Array.isArray(storageRes.data)) {
-        setStorageChartData({
-          labels: storageRes.data.map(s => s.storage_location || 'Undefined'),
-          datasets: [{ label: 'Total Quantity by Storage', data: storageRes.data.map(s => parseInt(s.total_quantity, 10) || 0), backgroundColor: generateChartColors(storageRes.data.length), borderColor: '#fff', borderWidth: 1 }],
-        });
-      } else console.warn("Storage data invalid:", storageRes);
+              console.log("AnalyticsPage: Processing storageRes.data for chart:", storageRes.data); // Keep this for verification
+              setStorageChartData({
+                // --- MODIFICATION: Use correct property names from RPC ---
+                labels: storageRes.data.map(s => s.storage_location_name || 'Undefined Location'), // Use s.storage_location_name
+                datasets: [{
+                  label: 'Total Quantity by Storage',
+                  // --- MODIFICATION: Use correct property names from RPC ---
+                  data: storageRes.data.map(s => parseInt(s.total_quantity_at_location, 10) || 0), // Use s.total_quantity_at_location
+                  backgroundColor: generateChartColors(storageRes.data.length),
+                  borderColor: '#fff',
+                  borderWidth: 1
+                }],
+              });
+            } else {
+              console.warn("Storage data invalid or empty:", storageRes);
+              setStorageChartData(initialPieDoughnutData()); // Reset if data is invalid
+            }
 
       // Process Sales Data
       if (salesSumRes.success) setSalesSummary(salesSumRes.summary); else console.warn("Sales summary invalid:", salesSumRes);

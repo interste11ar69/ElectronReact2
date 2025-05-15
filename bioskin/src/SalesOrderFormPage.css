@@ -174,3 +174,24 @@
     /* Ensure card styling is applied or add specific styles */
     /* padding: ...; margin-bottom: ...; border-radius: ...; */
 }
+
+/* src/SalesOrderFormPage.css */
+.error-text-small {
+    color: var(--color-status-danger);
+    font-size: 0.8em;
+    display: block;
+    margin-top: 0.25rem;
+}
+.line-item-total { /* Example for better alignment */
+    display: flex;
+    align-items: center; /* Vertically center content */
+    justify-content: flex-end; /* Align text to right */
+    padding-top: 1.5em; /* Adjust to align with input fields based on your label heights */
+    /* Or if labels are above inputs: */
+    /* align-self: flex-end; padding-bottom: 0.5rem; */
+}
+.line-item-actions { /* Example for better alignment */
+     display: flex;
+     align-items: flex-end; /* Align button to bottom */
+     padding-bottom: calc(var(--spacing-unit) * 1.75); /* Match input padding if labels are on top */
+}

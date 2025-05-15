@@ -1,0 +1,108 @@
+/* src/ReturnProcessingPage.css */
+
+/* Assuming .page-container, .card, .form-group, .form-label, .form-control,
+   .button, .button-primary, .button-secondary, .error-message, .success-message
+   are defined globally in index.css or similar and provide base styling. */
+
+.return-processing-page .page-header-alt.rpp-header { /* Specificity for this page's header */
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.5rem; /* Consistent with other page headers */
+    padding-bottom: 1rem;
+    border-bottom: 1px solid var(--color-border-soft);
+}
+
+.return-processing-page .rpp-header-title {
+    margin: 0;
+    font-size: 1.8em; /* Or match your global h1 style for page titles */
+    color: var(--color-text-dark);
+    font-weight: 700; /* Ensure title is bold */
+}
+
+.return-processing-page .view-history-btn {
+    /* Uses .button and .button-outline (assuming .button-outline is a global class like .button-secondary) */
+    /* Additional specific styles if needed: */
+    font-size: 0.9em;
+    padding: 0.6rem 1.2rem; /* Slightly smaller padding if desired */
+    /* color: var(--color-primary-dark); */ /* Handled by .button-outline or .button-secondary */
+    /* border-color: var(--color-primary-dark); */ /* Handled by .button-outline or .button-secondary */
+}
+.return-processing-page .view-history-btn:hover {
+    /* background-color: var(--color-primary-dark-hover-bg); */ /* Handled by .button-outline or .button-secondary */
+    /* color: var(--color-primary-light); */ /* Handled by .button-outline or .button-secondary */
+}
+
+
+.return-processing-page .rpp-form { /* Specific styles for the form card on this page */
+    /* .card global styles provide base */
+    padding: 2rem; /* Or match global .card padding */
+}
+
+/* Form groups and labels use global .form-group and .form-label */
+.return-processing-page .form-group {
+    margin-bottom: 1.5rem;
+}
+.return-processing-page .form-label { /* If you need to override global .form-label */
+    font-weight: 600;
+    color: var(--color-text-medium);
+}
+
+/* Inputs and Textareas use global .form-control */
+.return-processing-page .form-control {
+    /* width: 100%; */ /* From global */
+    /* padding: 0.8rem; */ /* From global */
+    /* ... other global styles ... */
+}
+.return-processing-page .form-control:focus {
+    border-color: var(--color-primary-dark);
+    box-shadow: 0 0 0 0.2rem var(--focus-ring-color);
+}
+
+
+/* Small helper text below inputs */
+.return-processing-page .form-text.text-muted {
+    display: block;
+    margin-top: 0.5rem;
+    font-size: 0.85em;
+    color: var(--color-text-light);
+}
+
+/* Form Actions styling */
+.return-processing-page .rpp-form-actions {
+    text-align: right;
+    margin-top: 2rem;
+    display: flex; /* For gap between buttons */
+    justify-content: flex-end; /* Align buttons to the right */
+    gap: 0.75rem; /* Space between buttons */
+}
+
+/* Ensure global .error-message and .success-message .card are styled well */
+.return-processing-page .error-message.card,
+.return-processing-page .success-message.card {
+    /* Base styles from .card */
+    margin-bottom: 1.5rem;
+    padding: 1rem; /* Or match global .card padding */
+}
+.return-processing-page .error-message.card {
+    color: var(--color-status-danger);
+    background-color: rgba(211, 47, 47, 0.05);
+    border: 1px solid var(--color-status-danger);
+}
+.return-processing-page .success-message.card {
+    color: var(--color-status-success);
+    background-color: rgba(56, 142, 60, 0.05);
+    border: 1px solid var(--color-status-success);
+}
+
+/* react-select specific overrides if needed globally for consistency,
+   otherwise, the `styles` prop in JS is fine for component-specific tweaks.
+   Example of global overrides (you'd target .react-select__control, etc.):
+.react-select__control {
+    border-color: var(--color-border-strong) !important;
+}
+.react-select__control--is-focused {
+    border-color: var(--color-primary-dark) !important;
+    box-shadow: 0 0 0 1px var(--color-primary-dark) !important; // Simpler focus ring
+}
+*/

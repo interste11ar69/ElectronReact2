@@ -97,6 +97,7 @@ contextBridge.exposeInMainWorld(
     // --- Sales Order Management ---
     createSalesOrder: (orderPayload, orderItemsPayload) => {
       console.log('[Preload] Invoking "create-sales-order" with orderPayload:', orderPayload, 'and orderItemsPayload:', orderItemsPayload);
+      // Main.js expects an object like { orderData: ..., orderItemsData: ... }
       return ipcRenderer.invoke('create-sales-order', { orderData: orderPayload, orderItemsData: orderItemsPayload });
     },
     getSalesOrders: (filters) => {

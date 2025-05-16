@@ -31,6 +31,7 @@ const TRANSACTION_TYPES = {
   // Add other transaction types used elsewhere (e.g., SALE_ITEM, RETURN_RESELLABLE) if this function might be used more broadly,
   // or keep it specific to stock adjustments.
 };
+const COMMITTED_ORDER_STATUSES = ['Confirmed', 'Awaiting Payment', 'Ready to Ship'];
 
 // --- Global Variables ---
 let currentUser = null;
@@ -2042,47 +2043,87 @@ ipcMain.handle("generate-order-number", async () => {
   }
 });
 
+// public/main.js
+
 ipcMain.handle('create-sales-order', async (event, { orderData, orderItemsData }) => {
+    // Log 1: What is currentUser at the very start of this handler?
+    console.log('[Main Process create-sales-order] Global currentUser at handler start:', JSON.stringify(currentUser, null, 2));
     const user = currentUser;
-    console.log('[Main Process] IPC create-sales-order received. User:', user?.username, 'OrderData:', orderData);
 
+    // Log 2: What did we receive from the frontend?
+    console.log('[Main Process create-sales-order] Received orderData from frontend:', JSON.stringify(orderData, null, 2));
+    console.log('[Main Process create-sales-order] Received orderItemsData from frontend:', JSON.stringify(orderItemsData, null, 2));
+
+    // --- Initial Validations ---
     if (!user) {
-        console.error('[Main Process] Create Sales Order: Unauthorized - No user.');
-        return { success: false, message: "Unauthorized: User not logged in." }; // Ensure return
+        console.error('[Main Process create-sales-order] Error: Not authenticated. currentUser is null.');
+        return { success: false, message: "Unauthorized: User not logged in." };
     }
-    if (!orderData || !orderItemsData || orderItemsData.length === 0) {
-        console.error('[Main Process] Create Sales Order: Invalid payload - Missing orderData or orderItemsData.');
-        return { success: false, message: "Invalid order data: Order details or items are missing." }; // Ensure return
+    if (!user.id) { // Specifically check for the user's ID
+        console.error('[Main Process create-sales-order] Error: Authenticated user object is missing an ID property. User object:', JSON.stringify(user, null, 2));
+        if (typeof logActivity === 'function') await logActivity('System', 'Create Sales Order Error', 'Authenticated user object is missing ID.');
+        return { success: false, message: "Internal Server Error: User session data is corrupted (missing ID)." };
+    }
+    if (!orderData || typeof orderData !== 'object' || Object.keys(orderData).length === 0) {
+        console.error('[Main Process create-sales-order] Error: Invalid payload - Missing or empty orderData.');
+        return { success: false, message: "Invalid order data: Order details are missing." };
+    }
+    if (!orderItemsData || !Array.isArray(orderItemsData) || orderItemsData.length === 0) {
+        console.error('[Main Process create-sales-order] Error: Invalid payload - Missing or empty orderItemsData.');
+        return { success: false, message: "Invalid order data: Order items are missing." };
     }
 
+    // --- Fetch Fulfillment Location ---
+    let primaryFulfillmentLocationId;
     try {
+        primaryFulfillmentLocationId = await db.getStoreLocationId();
+        // Only throw error if fulfilling and location is missing. If pending, it might be okay.
+        if (!primaryFulfillmentLocationId && orderData.status === 'Fulfilled') {
+            console.error('[Main Process create-sales-order] Error: Primary fulfillment location (STORE) not found, and order is to be Fulfilled.');
+            throw new Error("Primary fulfillment location (STORE) not found. Cannot create fulfilled sales order properly.");
+        }
+        console.log('[Main Process create-sales-order] primaryFulfillmentLocationId:', primaryFulfillmentLocationId);
+    } catch (e) {
+        console.error("[Main Process create-sales-order] Error fetching primaryFulfillmentLocationId:", e);
+        if (typeof logActivity === 'function') await logActivity(user.username, 'Create Sales Order Error', `Config Error: ${e.message}`);
+        return { success: false, message: `Configuration Error: ${e.message}` };
+    }
+
+    // --- Main Logic ---
+    try {
+        // Construct fullOrderData, ensuring created_by_user_id is set
         const fullOrderData = {
-            ...orderData,
-            created_by_user_id: user.id
+            ...orderData, // Spread data from frontend (customer_id, order_date, status, notes, total_amount)
+            created_by_user_id: user.id, // Explicitly set/overwrite with the logged-in user's ID
+            // order_number: await db.generateOrderNumber(), // Optional: if backend generates order number before insert
         };
-        console.log('[Main Process] Calling db.createSalesOrder with fullOrderData and orderItemsData.');
-        const result = await db.createSalesOrder(fullOrderData, orderItemsData); // This calls supabaseClient
 
-        console.log('[Main Process] db.createSalesOrder result:', result); // <<< IMPORTANT LOG
+        // Log 3: What is being sent to the db layer?
+        console.log('[Main Process create-sales-order] "fullOrderData" being sent to db.createSalesOrder:', JSON.stringify(fullOrderData, null, 2));
+        console.log('[Main Process create-sales-order] "orderItemsData" being sent to db.createSalesOrder (sample):', JSON.stringify(orderItemsData.slice(0,1), null, 2));
+        console.log('[Main Process create-sales-order] "primaryFulfillmentLocationId" being sent to db.createSalesOrder:', primaryFulfillmentLocationId);
 
-        if (result && result.success) { // Check if result and result.success exist
+        const resultFromDbCreate = await db.createSalesOrder(fullOrderData, orderItemsData, primaryFulfillmentLocationId);
+
+        // Log 4: What did the db layer return?
+        console.log('[Main Process create-sales-order] db.createSalesOrder result:', JSON.stringify(resultFromDbCreate, null, 2));
+
+        if (resultFromDbCreate && resultFromDbCreate.success) {
             if (typeof logActivity === 'function') {
-                await logActivity(user.username, 'Created Sales Order', `Order ID: ${result.order?.id} (No: ${result.order?.order_number || ''}), Total: ${result.order?.total_amount}`);
+                await logActivity(user.username, 'Created Sales Order', `Order ID: ${resultFromDbCreate.order?.id} (No: ${resultFromDbCreate.order?.order_number || `ID-${resultFromDbCreate.order?.id}`}), Status: ${resultFromDbCreate.order?.status}`);
             }
         } else {
-            // If result is defined but success is false, or result is undefined
             if (typeof logActivity === 'function') {
-                await logActivity(user.username, 'Failed to Create Sales Order', result?.message || 'Unknown DB error during creation');
+                await logActivity(user.username, 'Failed to Create Sales Order', resultFromDbCreate?.message || 'Unknown DB error during creation');
             }
         }
-        return result || { success: false, message: "Sales order creation failed with an undefined result from DB layer." }; // Ensure a return
+        return resultFromDbCreate || { success: false, message: "Sales order creation returned an undefined result from the database layer." };
 
     } catch (error) {
-        console.error("[Main Process] Critical error in create-sales-order IPC handler:", error);
+        console.error("[Main Process create-sales-order] Critical error in main try-catch block:", error);
         if (typeof logActivity === 'function') {
-            await logActivity(user.username, 'Error Creating Sales Order', `System Error: ${error.message}`);
+            await logActivity(user.username, 'Error Creating Sales Order', `System Error: ${error.message}.`);
         }
-        // Ensure a structured error object is returned
         return { success: false, message: `Server error during sales order creation: ${error.message}` };
     }
 });
@@ -2105,61 +2146,158 @@ ipcMain.handle("get-sales-order-by-id", async (event, orderId) => {
   }
 });
 
-ipcMain.handle(
-  "update-sales-order-status",
-  async (event, { orderId, newStatus }) => {
+ipcMain.handle('update-sales-order-status', async (event, { orderId, newStatus }) => {
     const user = currentUser;
     if (!user) return { success: false, message: "Unauthorized" };
-    try {
-      const result = await db.updateSalesOrderStatus(
-        orderId,
-        newStatus,
-        user.id
-      ); // user.id is passed as performingUserId
 
-      if (result.success) {
-        // --- MODIFICATION FOR ACTIVITY LOG ---
-        let logDetails = `Order ID: ${orderId}.`;
-        if (
-          newStatus === "Fulfilled" &&
-          result.order &&
-          result.order.status === "Fulfilled"
-        ) {
-          // We can be more confident deductions occurred if the final status is indeed Fulfilled
-          logDetails += ` Stock deductions processed.`;
-        } else if (newStatus === "Fulfilled") {
-          // This case might happen if the update to Fulfilled failed for some reason after stock deduction attempt.
-          // The db function itself throws an error if deduction fails, so result.success would be false.
-          // So, if result.success is true and newStatus is Fulfilled, deductions are implied.
-          logDetails += ` Stock deductions were processed.`;
+    let primaryFulfillmentLocationId; // ID of your main store/warehouse
+    try {
+        primaryFulfillmentLocationId = await db.getStoreLocationId(); // Assuming "STORE" is the default
+        if (!primaryFulfillmentLocationId) {
+            throw new Error("Primary fulfillment location (STORE) not found. Cannot process order status change.");
         }
-        // --- END MODIFICATION ---
-        logActivity(
-          user.username,
-          `Updated Sales Order Status to ${newStatus}`,
-          logDetails
-        );
-      } else {
-        // Log the failure more explicitly if needed, though db.updateSalesOrderStatus itself might log errors
-        logActivity(
-          user.username,
-          `Failed to Update Sales Order Status to ${newStatus}`,
-          `Order ID: ${orderId}. Error: ${result.message}`
-        );
-      }
-      return result;
-    } catch (error) {
-      console.error("Error in update-sales-order-status IPC:", error);
-      // Ensure error details are logged if an exception occurs before logActivity inside try
-      logActivity(
-        user.username,
-        "Error updating Sales Order Status",
-        `Order ID: ${orderId}. System Error: ${error.message}`
-      );
-      return { success: false, message: error.message };
+    } catch (e) {
+        console.error("[Main Process update-sales-order-status] Error getting store location ID:", e);
+        return { success: false, message: `Configuration error: ${e.message}` };
     }
-  }
-);
+
+    console.log(`[Main Process] update-sales-order-status: Order ID ${orderId}, New Status: ${newStatus}, User: ${user.username}, Fulfillment Loc ID: ${primaryFulfillmentLocationId}`);
+
+    try {
+        const order = await db.getSalesOrderById(orderId); // Fetches order and its items
+        if (!order) return { success: false, message: "Sales order not found." };
+
+        const oldStatus = order.status;
+        console.log(`[Main Process] Order ${orderId} - Old Status: ${oldStatus}, New Status: ${newStatus}`);
+
+        // Prevent invalid transitions
+        if (oldStatus === "Fulfilled" && newStatus !== "Fulfilled") {
+            return { success: false, message: "Cannot change status of an already Fulfilled order to a non-fulfilled status through this action." };
+        }
+        if (oldStatus === "Cancelled" && newStatus !== "Cancelled") {
+            return { success: false, message: "Cannot change status of an already Cancelled order through this action." };
+        }
+        if (oldStatus === newStatus) {
+            return { success: true, order: order, message: "Order status is already " + newStatus + "." };
+        }
+
+        let allocationChanged = false;
+
+        // --- Handle Allocation Changes ---
+        const oldStatusWasCommitted = COMMITTED_ORDER_STATUSES.includes(oldStatus);
+        const newStatusIsCommitted = COMMITTED_ORDER_STATUSES.includes(newStatus);
+
+        if (!oldStatusWasCommitted && newStatusIsCommitted) {
+            // Moving from non-committed (e.g. Pending) to committed (e.g. Confirmed) -> ALLOCATE
+            console.log(`[Main Process] Order ${orderId}: Allocating stock.`);
+            for (const item of order.order_items) {
+                const qtyToProcess = parseInt(item.quantity, 10);
+                const targetItemId = item.item_id || item.bundle_id; // Determine if item or bundle for logging, actual allocation is by item_id
+
+                if (item.item_id) { // Allocate individual items
+                    const allocResult = await db.incrementAllocatedQuantity(item.item_id, primaryFulfillmentLocationId, qtyToProcess);
+                    if (!allocResult.success) throw new Error(`Failed to allocate stock for item ID ${item.item_id}: ${allocResult.message}`);
+                } else if (item.bundle_id) { // Allocate components of a bundle
+                    const bundleDetails = await db.getBundleById(item.bundle_id);
+                    if (!bundleDetails || !bundleDetails.components) throw new Error (`Bundle ID ${item.bundle_id} details not found for allocation.`);
+                    for (const component of bundleDetails.components) {
+                        const componentQtyToAllocate = component.quantity_in_bundle * qtyToProcess;
+                        const allocResult = await db.incrementAllocatedQuantity(component.item_id, primaryFulfillmentLocationId, componentQtyToAllocate);
+                        if (!allocResult.success) throw new Error(`Failed to allocate stock for bundle component ID ${component.item_id}: ${allocResult.message}`);
+                    }
+                }
+                allocationChanged = true;
+            }
+        } else if (oldStatusWasCommitted && !newStatusIsCommitted && newStatus !== 'Fulfilled') {
+            // Moving from committed (e.g. Confirmed) to non-committed (e.g. Cancelled, but NOT Fulfilled yet) -> DE-ALLOCATE
+            console.log(`[Main Process] Order ${orderId}: De-allocating stock due to status change to ${newStatus}.`);
+            for (const item of order.order_items) {
+                const qtyToProcess = parseInt(item.quantity, 10);
+                if (item.item_id) {
+                    const deallocResult = await db.decrementAllocatedQuantity(item.item_id, primaryFulfillmentLocationId, qtyToProcess);
+                    if (!deallocResult.success) throw new Error(`Failed to de-allocate stock for item ID ${item.item_id}: ${deallocResult.message}`);
+                } else if (item.bundle_id) {
+                    const bundleDetails = await db.getBundleById(item.bundle_id);
+                     if (!bundleDetails || !bundleDetails.components) throw new Error (`Bundle ID ${item.bundle_id} details not found for de-allocation.`);
+                    for (const component of bundleDetails.components) {
+                        const componentQtyToDeallocate = component.quantity_in_bundle * qtyToProcess;
+                        const deallocResult = await db.decrementAllocatedQuantity(component.item_id, primaryFulfillmentLocationId, componentQtyToDeallocate);
+                        if (!deallocResult.success) throw new Error(`Failed to de-allocate stock for bundle component ID ${component.item_id}: ${deallocResult.message}`);
+                    }
+                }
+                allocationChanged = true;
+            }
+        }
+
+        // --- Handle Stock Deduction for Fulfillment ---
+        if (newStatus === "Fulfilled" && oldStatus !== "Fulfilled") {
+            console.log(`[Main Process] Order ${orderId}: Fulfilling order. Deducting physical stock and de-allocating.`);
+            const userInfo = await db.getUserInfoForLogById(user.id); // user performing the action
+
+            for (const item of order.order_items) {
+                const qtyToProcess = parseInt(item.quantity, 10);
+                const commonTransactionNotes = `Fulfilled Order #${order.order_number || order.id}, Item: ${item.item_snapshot_name}`;
+
+                if (item.item_id) {
+                    // 1. De-allocate
+                    if (oldStatusWasCommitted) { // Only de-allocate if it was previously committed
+                        const deallocResult = await db.decrementAllocatedQuantity(item.item_id, primaryFulfillmentLocationId, qtyToProcess);
+                        if (!deallocResult.success) throw new Error(`Failed to de-allocate stock for item ID ${item.item_id} during fulfillment: ${deallocResult.message}`);
+                    }
+                    // 2. Deduct physical stock
+                    const transactionDetails = {
+                        transactionType: 'SALE_ITEM_DEDUCTION', referenceId: String(order.id), referenceType: 'SALES_ORDER_ITEM',
+                        userId: user.id, usernameSnapshot: userInfo.username, notes: commonTransactionNotes
+                    };
+                    const deductionResult = await db.adjustStockQuantity(item.item_id, primaryFulfillmentLocationId, -Math.abs(qtyToProcess), transactionDetails);
+                    if (!deductionResult.success) throw new Error(`Failed to deduct physical stock for item ID ${item.item_id}: ${deductionResult.message}`);
+                } else if (item.bundle_id) {
+                    const bundleDetails = await db.getBundleById(item.bundle_id);
+                    if (!bundleDetails || !bundleDetails.components) throw new Error (`Bundle ID ${item.bundle_id} details not found for fulfillment.`);
+                    for (const component of bundleDetails.components) {
+                        const componentQtyToProcess = component.quantity_in_bundle * qtyToProcess;
+                        // 1. De-allocate component
+                        if (oldStatusWasCommitted) {
+                            const deallocResult = await db.decrementAllocatedQuantity(component.item_id, primaryFulfillmentLocationId, componentQtyToProcess);
+                            if (!deallocResult.success) throw new Error(`Failed to de-allocate stock for bundle component ID ${component.item_id}: ${deallocResult.message}`);
+                        }
+                        // 2. Deduct physical stock for component
+                        const transactionDetails = {
+                            transactionType: 'SALE_BUNDLE_COMPONENT_DEDUCTION', referenceId: String(order.id), referenceType: 'SALES_ORDER_BUNDLE_ITEM',
+                            userId: user.id, usernameSnapshot: userInfo.username, notes: `${commonTransactionNotes} (Component: ${component.item?.name || component.item_id})`
+                        };
+                        const deductionResult = await db.adjustStockQuantity(component.item_id, primaryFulfillmentLocationId, -Math.abs(componentQtyToProcess), transactionDetails);
+                        if (!deductionResult.success) throw new Error(`Failed to deduct physical stock for bundle component ID ${component.item_id}: ${deductionResult.message}`);
+                    }
+                }
+                allocationChanged = true; // Also counts as an allocation change
+            }
+            console.log(`[Main Process] Stock deductions and de-allocations complete for fulfilled order ${orderId}.`);
+        }
+
+        // --- Update Order Status in DB ---
+        const { data: updatedOrder, error: statusUpdateError } = await supabase
+            .from("sales_orders")
+            .update({ status: newStatus, updated_at: new Date() })
+            .eq("id", orderId)
+            .select()
+            .single();
+
+        if (statusUpdateError) throw statusUpdateError;
+
+        let logMessage = `Order ID: ${orderId} status changed from ${oldStatus} to ${newStatus}.`;
+        if (allocationChanged) logMessage += ` Stock allocations updated.`;
+        if (newStatus === "Fulfilled") logMessage += ` Physical stock deducted.`;
+
+        await logActivity(user.username, `Updated Sales Order Status`, logMessage);
+        return { success: true, order: updatedOrder, message: `Sales Order status updated to ${newStatus}.` };
+
+    } catch (error) {
+        console.error("[Main Process] Error in updateSalesOrderStatus IPC handler:", error);
+        await logActivity(user.username, 'Error updating Sales Order Status', `Order ID: ${orderId}. Error: ${error.message}`);
+        return { success: false, message: error.message || "Failed to update sales order status." };
+    }
+});
 ipcMain.handle(
   "get-inventory-transactions-for-item",
   async (event, argsObject) => {

@@ -31,7 +31,6 @@ const TRANSACTION_TYPES = {
   // Add other transaction types used elsewhere (e.g., SALE_ITEM, RETURN_RESELLABLE) if this function might be used more broadly,
   // or keep it specific to stock adjustments.
 };
-const COMMITTED_ORDER_STATUSES = ['Confirmed', 'Awaiting Payment', 'Ready to Ship'];
 
 // --- Global Variables ---
 let currentUser = null;
@@ -102,30 +101,25 @@ async function logActivity(user, action, details = "") {
 }
 
 // --- CSV Helper Function (Defined Globally) ---
-        function convertToCSV(data, explicitHeaders) { // Modified to accept explicitHeaders
-            if (!data || data.length === 0) {
-                console.warn("[convertToCSV] No data provided to convert.");
-                return '';
-            }
-            // Use provided explicitHeaders or infer from the first object's keys
-            const headerKeys = explicitHeaders || Object.keys(data[0]);
-            const headerString = headerKeys.join(',');
-
-            const rows = data.map(row => {
-                return headerKeys.map(key => {
-                    let cell = row[key];
-                    if (cell === null || cell === undefined) {
-                        cell = '';
-                    } else {
-                        cell = String(cell);
-                    }
-                    if (cell.includes(',') || cell.includes('"') || cell.includes('\n')) {
-                        cell = `"${cell.replace(/"/g, '""')}"`;
-                    }
-                    return cell;
-                }).join(',');
-            });
-            return [headerString, ...rows].join('\n');
+        function convertToCSV(data, headers) {
+          if (!data || data.length === 0) {
+            return "";
+          }
+          const headerKeys = headers || Object.keys(data[0]);
+          const headerString = headerKeys.join(",");
+          const rows = data.map((row) => {
+            return headerKeys
+              .map((key) => {
+                let cell =
+                  row[key] === null || row[key] === undefined ? "" : String(row[key]);
+                if (cell.includes(",") || cell.includes('"') || cell.includes("\n")) {
+                  cell = `"${cell.replace(/"/g, '""')}"`;
+                }
+                return cell;
+              })
+              .join(",");
+          });
+          return [headerString, ...rows].join("\n");
         }
 
 
@@ -1289,95 +1283,141 @@ app.whenReady().then(() => {
   );
 
   // --- Export Handler ---
-  ipcMain.handle('export-inventory', async (event) => {
-          const username = currentUser?.username; // Assuming currentUser is globally available
-          // Call your global logActivity function
-          if (typeof logActivity === 'function') {
-              await logActivity(username, 'Started inventory export');
-          } else {
-              console.warn("logActivity function not available for 'Started inventory export'");
+  ipcMain.handle("export-inventory", async (event) => {
+    const username = currentUser?.username;
+    logActivity(username, "Started inventory export");
+    let result; // Define outside try
+
+    try {
+      // --- Start export logic ---
+      let items;
+      try {
+        items = await db.getAllItemsForExport();
+        if (!items || items.length === 0) {
+          console.log("[IPC export-inventory] No items found.");
+          result = {
+            success: true,
+            message: "No inventory items found to export.",
+          };
+          logActivity(
+            username,
+            "Finished inventory export",
+            "Status: Success (No data)"
+          );
+          return result; // Exit early
+        }
+        console.log(`[IPC export-inventory] Fetched ${items.length} items.`);
+      } catch (fetchError) {
+        console.error(
+          "[IPC export-inventory] Error fetching items:",
+          fetchError
+        );
+        throw new Error(
+          `Failed to fetch inventory data: ${fetchError.message}`
+        ); // Throw to outer catch
+      }
+
+      let csvContent;
+      try {
+        const headers = [
+          "sku",
+          "name",
+          "variant",
+          "description",
+          "category",
+          "storage_location",
+          "quantity",
+          "cost_price",
+          "status",
+          "created_at",
+          "updated_at",
+        ];
+        csvContent = convertToCSV(items, headers);
+        console.log("[IPC export-inventory] Formatted data to CSV.");
+      } catch (formatError) {
+        console.error(
+          "[IPC export-inventory] Error formatting data:",
+          formatError
+        );
+        throw new Error(`Failed to format data: ${formatError.message}`);
+      }
+
+      let filePath;
+      try {
+        const window =
+          BrowserWindow.fromWebContents(event.sender) ||
+          BrowserWindow.getFocusedWindow();
+        if (!window) {
+          throw new Error("Could not get window reference for save dialog.");
+        }
+        const { canceled, filePath: chosenPath } = await dialog.showSaveDialog(
+          window,
+          {
+            title: "Save Inventory Export",
+            defaultPath: `inventory-export-${
+              new Date().toISOString().split("T")[0]
+            }.csv`,
+            filters: [
+              { name: "CSV Files", extensions: ["csv"] },
+              { name: "All Files", extensions: ["*"] },
+            ],
           }
+        );
 
-          let result;
+        if (canceled || !chosenPath) {
+          console.log("[IPC export-inventory] User cancelled save.");
+          result = { success: true, message: "Export cancelled by user." };
+          logActivity(
+            username,
+            "Finished inventory export",
+            "Status: Cancelled"
+          );
+          return result; // Exit early
+        }
+        filePath = chosenPath;
+        console.log(`[IPC export-inventory] User selected path: ${filePath}`);
+      } catch (dialogError) {
+        console.error(
+          "[IPC export-inventory] Error showing save dialog:",
+          dialogError
+        );
+        throw new Error(`Failed to show save dialog: ${dialogError.message}`);
+      }
 
-          try {
-              let itemsData;
-              try {
-                  itemsData = await db.getAllItemsForExport(); // This calls the updated function
-                  if (!itemsData || itemsData.length === 0) {
-                      console.log('[IPC export-inventory] No item-location records found.');
-                      result = { success: true, message: 'No inventory data found to export.' };
-                      if (typeof logActivity === 'function') await logActivity(username, 'Finished inventory export', 'Status: Success (No data)');
-                      return result;
-                  }
-                  console.log(`[IPC export-inventory] Fetched ${itemsData.length} item-location records.`);
-              } catch (fetchError) {
-                  console.error('[IPC export-inventory] Error fetching items:', fetchError);
-                  throw new Error(`Failed to fetch inventory data: ${fetchError.message}`);
-              }
-
-              let csvContent;
-              try {
-                  const headers = [
-                      'item_id', 'sku', 'item_name', 'variant', 'description', 'category',
-                      'cost_price', 'item_status', 'is_archived', 'low_stock_threshold',
-                      'item_created_at', 'item_updated_at',
-                      'location_id', 'location_name', 'location_description', 'location_is_active',
-                      'quantity_at_location'
-                  ];
-                  csvContent = convertToCSV(itemsData, headers);
-                  console.log('[IPC export-inventory] Formatted data to CSV.');
-              } catch (formatError) {
-                  console.error('[IPC export-inventory] Error formatting data:', formatError);
-                  throw new Error(`Failed to format data: ${formatError.message}`);
-              }
-
-              let filePath;
-              try {
-                  const window = BrowserWindow.fromWebContents(event.sender) || BrowserWindow.getFocusedWindow();
-                  if (!window) {
-                      throw new Error('Could not get window reference for save dialog.');
-                  }
-                  const { canceled, filePath: chosenPath } = await dialog.showSaveDialog(window, {
-                     title: 'Save Comprehensive Inventory Export',
-                     defaultPath: `comprehensive-inventory-export-${new Date().toISOString().split('T')[0]}.csv`,
-                     filters: [ { name: 'CSV Files', extensions: ['csv'] }, { name: 'All Files', extensions: ['*'] } ]
-                  });
-
-                  if (canceled || !chosenPath) {
-                      console.log('[IPC export-inventory] User cancelled save.');
-                      result = { success: true, message: 'Export cancelled by user.' };
-                      if (typeof logActivity === 'function') await logActivity(username, 'Finished inventory export', 'Status: Cancelled');
-                      return result;
-                  }
-                  filePath = chosenPath;
-                  console.log(`[IPC export-inventory] User selected path: ${filePath}`);
-              } catch (dialogError) {
-                   console.error('[IPC export-inventory] Error showing save dialog:', dialogError);
-                  throw new Error(`Failed to show save dialog: ${dialogError.message}`);
-              }
-
-              try {
-                  fs.writeFileSync(filePath, csvContent, 'utf-8');
-                  console.log('[IPC export-inventory] Successfully wrote CSV file.');
-                  result = { success: true, message: `Inventory exported successfully to ${path.basename(filePath)}` };
-                  if (typeof logActivity === 'function') await logActivity(username, 'Finished inventory export', `Status: Success, File: ${path.basename(filePath)}`);
-                  return result;
-              } catch (writeError) {
-                   console.error('[IPC export-inventory] Error writing CSV file:', writeError);
-                  throw new Error(`Failed to save file: ${writeError.message}`);
-              }
-
-          } catch (error) {
-              console.error('[main.js] Critical error during export inventory:', error);
-              if (typeof logActivity === 'function') await logActivity(username, 'Error during inventory export', error.message);
-              result = {
-                  success: false,
-                  message: `Export failed: ${error.message}`
-              };
-              return result;
-          }
-      });
+      try {
+        fs.writeFileSync(filePath, csvContent, "utf-8");
+        console.log("[IPC export-inventory] Successfully wrote CSV file.");
+        result = {
+          success: true,
+          message: `Inventory exported successfully to ${path.basename(
+            filePath
+          )}`,
+        };
+        logActivity(
+          username,
+          "Finished inventory export",
+          `Status: Success, File: ${path.basename(filePath)}`
+        );
+        return result;
+      } catch (writeError) {
+        console.error(
+          "[IPC export-inventory] Error writing CSV file:",
+          writeError
+        );
+        throw new Error(`Failed to save file: ${writeError.message}`);
+      }
+      // --- End export logic ---
+    } catch (error) {
+      // Catch errors from any step within the export process
+      console.error("[main.js] Critical error during export inventory:", error);
+      logActivity(username, "Error during inventory export", error.message);
+      result = {
+        success: false,
+        message: `Export failed: ${error.message}`,
+      };
+      return result;
+    }
+  });
 
   // --- Activity Log Fetch Handler ---
   ipcMain.handle("get-activity-log", async () => {
@@ -2043,90 +2083,37 @@ ipcMain.handle("generate-order-number", async () => {
   }
 });
 
-// public/main.js
-
-ipcMain.handle('create-sales-order', async (event, { orderData, orderItemsData }) => {
-    // Log 1: What is currentUser at the very start of this handler?
-    console.log('[Main Process create-sales-order] Global currentUser at handler start:', JSON.stringify(currentUser, null, 2));
+ipcMain.handle(
+  "create-sales-order",
+  async (event, { orderData, orderItemsData }) => {
     const user = currentUser;
-
-    // Log 2: What did we receive from the frontend?
-    console.log('[Main Process create-sales-order] Received orderData from frontend:', JSON.stringify(orderData, null, 2));
-    console.log('[Main Process create-sales-order] Received orderItemsData from frontend:', JSON.stringify(orderItemsData, null, 2));
-
-    // --- Initial Validations ---
-    if (!user) {
-        console.error('[Main Process create-sales-order] Error: Not authenticated. currentUser is null.');
-        return { success: false, message: "Unauthorized: User not logged in." };
-    }
-    if (!user.id) { // Specifically check for the user's ID
-        console.error('[Main Process create-sales-order] Error: Authenticated user object is missing an ID property. User object:', JSON.stringify(user, null, 2));
-        if (typeof logActivity === 'function') await logActivity('System', 'Create Sales Order Error', 'Authenticated user object is missing ID.');
-        return { success: false, message: "Internal Server Error: User session data is corrupted (missing ID)." };
-    }
-    if (!orderData || typeof orderData !== 'object' || Object.keys(orderData).length === 0) {
-        console.error('[Main Process create-sales-order] Error: Invalid payload - Missing or empty orderData.');
-        return { success: false, message: "Invalid order data: Order details are missing." };
-    }
-    if (!orderItemsData || !Array.isArray(orderItemsData) || orderItemsData.length === 0) {
-        console.error('[Main Process create-sales-order] Error: Invalid payload - Missing or empty orderItemsData.');
-        return { success: false, message: "Invalid order data: Order items are missing." };
-    }
-
-    // --- Fetch Fulfillment Location ---
-    let primaryFulfillmentLocationId;
+    if (!user) return { success: false, message: "Unauthorized" };
     try {
-        primaryFulfillmentLocationId = await db.getStoreLocationId();
-        // Only throw error if fulfilling and location is missing. If pending, it might be okay.
-        if (!primaryFulfillmentLocationId && orderData.status === 'Fulfilled') {
-            console.error('[Main Process create-sales-order] Error: Primary fulfillment location (STORE) not found, and order is to be Fulfilled.');
-            throw new Error("Primary fulfillment location (STORE) not found. Cannot create fulfilled sales order properly.");
-        }
-        console.log('[Main Process create-sales-order] primaryFulfillmentLocationId:', primaryFulfillmentLocationId);
-    } catch (e) {
-        console.error("[Main Process create-sales-order] Error fetching primaryFulfillmentLocationId:", e);
-        if (typeof logActivity === 'function') await logActivity(user.username, 'Create Sales Order Error', `Config Error: ${e.message}`);
-        return { success: false, message: `Configuration Error: ${e.message}` };
-    }
-
-    // --- Main Logic ---
-    try {
-        // Construct fullOrderData, ensuring created_by_user_id is set
-        const fullOrderData = {
-            ...orderData, // Spread data from frontend (customer_id, order_date, status, notes, total_amount)
-            created_by_user_id: user.id, // Explicitly set/overwrite with the logged-in user's ID
-            // order_number: await db.generateOrderNumber(), // Optional: if backend generates order number before insert
-        };
-
-        // Log 3: What is being sent to the db layer?
-        console.log('[Main Process create-sales-order] "fullOrderData" being sent to db.createSalesOrder:', JSON.stringify(fullOrderData, null, 2));
-        console.log('[Main Process create-sales-order] "orderItemsData" being sent to db.createSalesOrder (sample):', JSON.stringify(orderItemsData.slice(0,1), null, 2));
-        console.log('[Main Process create-sales-order] "primaryFulfillmentLocationId" being sent to db.createSalesOrder:', primaryFulfillmentLocationId);
-
-        const resultFromDbCreate = await db.createSalesOrder(fullOrderData, orderItemsData, primaryFulfillmentLocationId);
-
-        // Log 4: What did the db layer return?
-        console.log('[Main Process create-sales-order] db.createSalesOrder result:', JSON.stringify(resultFromDbCreate, null, 2));
-
-        if (resultFromDbCreate && resultFromDbCreate.success) {
-            if (typeof logActivity === 'function') {
-                await logActivity(user.username, 'Created Sales Order', `Order ID: ${resultFromDbCreate.order?.id} (No: ${resultFromDbCreate.order?.order_number || `ID-${resultFromDbCreate.order?.id}`}), Status: ${resultFromDbCreate.order?.status}`);
-            }
-        } else {
-            if (typeof logActivity === 'function') {
-                await logActivity(user.username, 'Failed to Create Sales Order', resultFromDbCreate?.message || 'Unknown DB error during creation');
-            }
-        }
-        return resultFromDbCreate || { success: false, message: "Sales order creation returned an undefined result from the database layer." };
-
+      // `created_by_user_id` is still important.
+      // `username_snapshot` specifically for initial logging inside createSalesOrder is now handled by db.getUserInfoForLogById
+      const fullOrderData = {
+        ...orderData,
+        created_by_user_id: user.id,
+        // No need to add username_snapshot: user.username here if db.createSalesOrder fetches it
+      };
+      const result = await db.createSalesOrder(fullOrderData, orderItemsData);
+      if (result.success) {
+        // The main activity log entry still benefits from direct username access
+        logActivity(
+          user.username,
+          "Created Sales Order",
+          `Order ID: ${result.order.id} (No: ${
+            result.order.order_number || ""
+          }), Total: ${result.order.total_amount}`
+        );
+      }
+      return result;
     } catch (error) {
-        console.error("[Main Process create-sales-order] Critical error in main try-catch block:", error);
-        if (typeof logActivity === 'function') {
-            await logActivity(user.username, 'Error Creating Sales Order', `System Error: ${error.message}.`);
-        }
-        return { success: false, message: `Server error during sales order creation: ${error.message}` };
+      console.error("Error in create-sales-order IPC:", error);
+      return { success: false, message: error.message };
     }
-});
+  }
+);
 
 ipcMain.handle("get-sales-orders", async (event, filters) => {
   try {
@@ -2146,158 +2133,61 @@ ipcMain.handle("get-sales-order-by-id", async (event, orderId) => {
   }
 });
 
-ipcMain.handle('update-sales-order-status', async (event, { orderId, newStatus }) => {
+ipcMain.handle(
+  "update-sales-order-status",
+  async (event, { orderId, newStatus }) => {
     const user = currentUser;
     if (!user) return { success: false, message: "Unauthorized" };
-
-    let primaryFulfillmentLocationId; // ID of your main store/warehouse
     try {
-        primaryFulfillmentLocationId = await db.getStoreLocationId(); // Assuming "STORE" is the default
-        if (!primaryFulfillmentLocationId) {
-            throw new Error("Primary fulfillment location (STORE) not found. Cannot process order status change.");
+      const result = await db.updateSalesOrderStatus(
+        orderId,
+        newStatus,
+        user.id
+      ); // user.id is passed as performingUserId
+
+      if (result.success) {
+        // --- MODIFICATION FOR ACTIVITY LOG ---
+        let logDetails = `Order ID: ${orderId}.`;
+        if (
+          newStatus === "Fulfilled" &&
+          result.order &&
+          result.order.status === "Fulfilled"
+        ) {
+          // We can be more confident deductions occurred if the final status is indeed Fulfilled
+          logDetails += ` Stock deductions processed.`;
+        } else if (newStatus === "Fulfilled") {
+          // This case might happen if the update to Fulfilled failed for some reason after stock deduction attempt.
+          // The db function itself throws an error if deduction fails, so result.success would be false.
+          // So, if result.success is true and newStatus is Fulfilled, deductions are implied.
+          logDetails += ` Stock deductions were processed.`;
         }
-    } catch (e) {
-        console.error("[Main Process update-sales-order-status] Error getting store location ID:", e);
-        return { success: false, message: `Configuration error: ${e.message}` };
-    }
-
-    console.log(`[Main Process] update-sales-order-status: Order ID ${orderId}, New Status: ${newStatus}, User: ${user.username}, Fulfillment Loc ID: ${primaryFulfillmentLocationId}`);
-
-    try {
-        const order = await db.getSalesOrderById(orderId); // Fetches order and its items
-        if (!order) return { success: false, message: "Sales order not found." };
-
-        const oldStatus = order.status;
-        console.log(`[Main Process] Order ${orderId} - Old Status: ${oldStatus}, New Status: ${newStatus}`);
-
-        // Prevent invalid transitions
-        if (oldStatus === "Fulfilled" && newStatus !== "Fulfilled") {
-            return { success: false, message: "Cannot change status of an already Fulfilled order to a non-fulfilled status through this action." };
-        }
-        if (oldStatus === "Cancelled" && newStatus !== "Cancelled") {
-            return { success: false, message: "Cannot change status of an already Cancelled order through this action." };
-        }
-        if (oldStatus === newStatus) {
-            return { success: true, order: order, message: "Order status is already " + newStatus + "." };
-        }
-
-        let allocationChanged = false;
-
-        // --- Handle Allocation Changes ---
-        const oldStatusWasCommitted = COMMITTED_ORDER_STATUSES.includes(oldStatus);
-        const newStatusIsCommitted = COMMITTED_ORDER_STATUSES.includes(newStatus);
-
-        if (!oldStatusWasCommitted && newStatusIsCommitted) {
-            // Moving from non-committed (e.g. Pending) to committed (e.g. Confirmed) -> ALLOCATE
-            console.log(`[Main Process] Order ${orderId}: Allocating stock.`);
-            for (const item of order.order_items) {
-                const qtyToProcess = parseInt(item.quantity, 10);
-                const targetItemId = item.item_id || item.bundle_id; // Determine if item or bundle for logging, actual allocation is by item_id
-
-                if (item.item_id) { // Allocate individual items
-                    const allocResult = await db.incrementAllocatedQuantity(item.item_id, primaryFulfillmentLocationId, qtyToProcess);
-                    if (!allocResult.success) throw new Error(`Failed to allocate stock for item ID ${item.item_id}: ${allocResult.message}`);
-                } else if (item.bundle_id) { // Allocate components of a bundle
-                    const bundleDetails = await db.getBundleById(item.bundle_id);
-                    if (!bundleDetails || !bundleDetails.components) throw new Error (`Bundle ID ${item.bundle_id} details not found for allocation.`);
-                    for (const component of bundleDetails.components) {
-                        const componentQtyToAllocate = component.quantity_in_bundle * qtyToProcess;
-                        const allocResult = await db.incrementAllocatedQuantity(component.item_id, primaryFulfillmentLocationId, componentQtyToAllocate);
-                        if (!allocResult.success) throw new Error(`Failed to allocate stock for bundle component ID ${component.item_id}: ${allocResult.message}`);
-                    }
-                }
-                allocationChanged = true;
-            }
-        } else if (oldStatusWasCommitted && !newStatusIsCommitted && newStatus !== 'Fulfilled') {
-            // Moving from committed (e.g. Confirmed) to non-committed (e.g. Cancelled, but NOT Fulfilled yet) -> DE-ALLOCATE
-            console.log(`[Main Process] Order ${orderId}: De-allocating stock due to status change to ${newStatus}.`);
-            for (const item of order.order_items) {
-                const qtyToProcess = parseInt(item.quantity, 10);
-                if (item.item_id) {
-                    const deallocResult = await db.decrementAllocatedQuantity(item.item_id, primaryFulfillmentLocationId, qtyToProcess);
-                    if (!deallocResult.success) throw new Error(`Failed to de-allocate stock for item ID ${item.item_id}: ${deallocResult.message}`);
-                } else if (item.bundle_id) {
-                    const bundleDetails = await db.getBundleById(item.bundle_id);
-                     if (!bundleDetails || !bundleDetails.components) throw new Error (`Bundle ID ${item.bundle_id} details not found for de-allocation.`);
-                    for (const component of bundleDetails.components) {
-                        const componentQtyToDeallocate = component.quantity_in_bundle * qtyToProcess;
-                        const deallocResult = await db.decrementAllocatedQuantity(component.item_id, primaryFulfillmentLocationId, componentQtyToDeallocate);
-                        if (!deallocResult.success) throw new Error(`Failed to de-allocate stock for bundle component ID ${component.item_id}: ${deallocResult.message}`);
-                    }
-                }
-                allocationChanged = true;
-            }
-        }
-
-        // --- Handle Stock Deduction for Fulfillment ---
-        if (newStatus === "Fulfilled" && oldStatus !== "Fulfilled") {
-            console.log(`[Main Process] Order ${orderId}: Fulfilling order. Deducting physical stock and de-allocating.`);
-            const userInfo = await db.getUserInfoForLogById(user.id); // user performing the action
-
-            for (const item of order.order_items) {
-                const qtyToProcess = parseInt(item.quantity, 10);
-                const commonTransactionNotes = `Fulfilled Order #${order.order_number || order.id}, Item: ${item.item_snapshot_name}`;
-
-                if (item.item_id) {
-                    // 1. De-allocate
-                    if (oldStatusWasCommitted) { // Only de-allocate if it was previously committed
-                        const deallocResult = await db.decrementAllocatedQuantity(item.item_id, primaryFulfillmentLocationId, qtyToProcess);
-                        if (!deallocResult.success) throw new Error(`Failed to de-allocate stock for item ID ${item.item_id} during fulfillment: ${deallocResult.message}`);
-                    }
-                    // 2. Deduct physical stock
-                    const transactionDetails = {
-                        transactionType: 'SALE_ITEM_DEDUCTION', referenceId: String(order.id), referenceType: 'SALES_ORDER_ITEM',
-                        userId: user.id, usernameSnapshot: userInfo.username, notes: commonTransactionNotes
-                    };
-                    const deductionResult = await db.adjustStockQuantity(item.item_id, primaryFulfillmentLocationId, -Math.abs(qtyToProcess), transactionDetails);
-                    if (!deductionResult.success) throw new Error(`Failed to deduct physical stock for item ID ${item.item_id}: ${deductionResult.message}`);
-                } else if (item.bundle_id) {
-                    const bundleDetails = await db.getBundleById(item.bundle_id);
-                    if (!bundleDetails || !bundleDetails.components) throw new Error (`Bundle ID ${item.bundle_id} details not found for fulfillment.`);
-                    for (const component of bundleDetails.components) {
-                        const componentQtyToProcess = component.quantity_in_bundle * qtyToProcess;
-                        // 1. De-allocate component
-                        if (oldStatusWasCommitted) {
-                            const deallocResult = await db.decrementAllocatedQuantity(component.item_id, primaryFulfillmentLocationId, componentQtyToProcess);
-                            if (!deallocResult.success) throw new Error(`Failed to de-allocate stock for bundle component ID ${component.item_id}: ${deallocResult.message}`);
-                        }
-                        // 2. Deduct physical stock for component
-                        const transactionDetails = {
-                            transactionType: 'SALE_BUNDLE_COMPONENT_DEDUCTION', referenceId: String(order.id), referenceType: 'SALES_ORDER_BUNDLE_ITEM',
-                            userId: user.id, usernameSnapshot: userInfo.username, notes: `${commonTransactionNotes} (Component: ${component.item?.name || component.item_id})`
-                        };
-                        const deductionResult = await db.adjustStockQuantity(component.item_id, primaryFulfillmentLocationId, -Math.abs(componentQtyToProcess), transactionDetails);
-                        if (!deductionResult.success) throw new Error(`Failed to deduct physical stock for bundle component ID ${component.item_id}: ${deductionResult.message}`);
-                    }
-                }
-                allocationChanged = true; // Also counts as an allocation change
-            }
-            console.log(`[Main Process] Stock deductions and de-allocations complete for fulfilled order ${orderId}.`);
-        }
-
-        // --- Update Order Status in DB ---
-        const { data: updatedOrder, error: statusUpdateError } = await supabase
-            .from("sales_orders")
-            .update({ status: newStatus, updated_at: new Date() })
-            .eq("id", orderId)
-            .select()
-            .single();
-
-        if (statusUpdateError) throw statusUpdateError;
-
-        let logMessage = `Order ID: ${orderId} status changed from ${oldStatus} to ${newStatus}.`;
-        if (allocationChanged) logMessage += ` Stock allocations updated.`;
-        if (newStatus === "Fulfilled") logMessage += ` Physical stock deducted.`;
-
-        await logActivity(user.username, `Updated Sales Order Status`, logMessage);
-        return { success: true, order: updatedOrder, message: `Sales Order status updated to ${newStatus}.` };
-
+        // --- END MODIFICATION ---
+        logActivity(
+          user.username,
+          `Updated Sales Order Status to ${newStatus}`,
+          logDetails
+        );
+      } else {
+        // Log the failure more explicitly if needed, though db.updateSalesOrderStatus itself might log errors
+        logActivity(
+          user.username,
+          `Failed to Update Sales Order Status to ${newStatus}`,
+          `Order ID: ${orderId}. Error: ${result.message}`
+        );
+      }
+      return result;
     } catch (error) {
-        console.error("[Main Process] Error in updateSalesOrderStatus IPC handler:", error);
-        await logActivity(user.username, 'Error updating Sales Order Status', `Order ID: ${orderId}. Error: ${error.message}`);
-        return { success: false, message: error.message || "Failed to update sales order status." };
+      console.error("Error in update-sales-order-status IPC:", error);
+      // Ensure error details are logged if an exception occurs before logActivity inside try
+      logActivity(
+        user.username,
+        "Error updating Sales Order Status",
+        `Order ID: ${orderId}. System Error: ${error.message}`
+      );
+      return { success: false, message: error.message };
     }
-});
+  }
+);
 ipcMain.handle(
   "get-inventory-transactions-for-item",
   async (event, argsObject) => {
@@ -2587,137 +2477,5 @@ ipcMain.handle(
     }
   }
 );
-
-ipcMain.handle('export-generic-data', async (event, { exportType, fileNamePrefix }) => {
-    const username = currentUser?.username; // User performing the export
-    console.log(`[Main Process] IPC export-generic-data. Type: ${exportType}, Prefix: ${fileNamePrefix}`);
-    if (typeof logActivity === 'function') await logActivity(username, `Started Data Export: ${exportType}`);
-
-    let dataToExport;
-    let headers; // Define headers based on exportType
-
-    try {
-        switch (exportType) {
-            case 'comprehensive_inventory':
-                dataToExport = await db.getAllItemsForExport(); // This calls your detailed inventory export function
-                headers = [
-                    'item_id', 'sku', 'item_name', 'variant', 'description', 'category',
-                    'cost_price', 'item_status', 'is_archived', 'low_stock_threshold',
-                    'item_created_at', 'item_updated_at',
-                    'location_id', 'location_name', 'location_description', 'location_is_active',
-                    'quantity_at_location'
-                ];
-                break;
-            case 'customers':
-                dataToExport = await db.getCustomers({}); // Fetches all customer fields by default
-                // Define headers for customers, or let convertToCSV infer if all fields are desired and simple
-                headers = ['id', 'full_name', 'email', 'phone', 'address', 'notes', 'created_at', 'updated_at'];
-                break;
-            case 'sales_orders':
-                const rawSalesOrders = await db.getSalesOrders({}); // Fetches sales orders with nested customer
-                dataToExport = await Promise.all(rawSalesOrders.map(async so => {
-                    let createdByUsername = 'N/A';
-                    if (so.created_by_user_id) {
-                        const userInfo = await db.getUserInfoForLogById(so.created_by_user_id);
-                        createdByUsername = userInfo?.username || 'N/A (User Fetch Failed)';
-                    }
-                    // Format date for CSV consistency if desired, or leave as ISO string
-                    const formattedOrderDate = so.order_date ? new Date(so.order_date).toLocaleDateString('en-CA') : 'N/A'; // YYYY-MM-DD
-
-                    return {
-                        id: so.id,
-                        order_number: so.order_number,
-                        customer_name: so.customer?.full_name || 'N/A',
-                        order_date: formattedOrderDate,
-                        status: so.status,
-                        total_amount: so.total_amount,
-                        created_by_username: createdByUsername,
-                        notes: so.notes
-                    };
-                }));
-                headers = ['id', 'order_number', 'customer_name', 'order_date', 'status', 'total_amount', 'created_by_username', 'notes'];
-                break;
-            // Add more cases here for other export types like:
-            // case 'sales_order_items':
-            //     dataToExport = await db.getSalesOrderItemsForExport(); // You'd need to create this db function
-            //     headers = [/* ... headers for sales order items ... */];
-            //     break;
-            // case 'returns':
-            //     dataToExport = await db.getReturnRecords({}); // Your existing function
-            //     // You might need to flatten nested data (item, customer, user) like for sales_orders
-            //     headers = [/* ... headers for returns ... */];
-            //     break;
-            default:
-                console.error(`[Main Process] Unsupported export type received: ${exportType}`);
-                throw new Error(`Unsupported export type: ${exportType}`);
-        }
-
-        if (!dataToExport || dataToExport.length === 0) {
-            if (typeof logActivity === 'function') await logActivity(username, `Finished Data Export: ${exportType}`, 'Status: Success (No data)');
-            return { success: true, message: `No data found for ${exportType.replace(/_/g, ' ')} to export.` };
-        }
-
-        console.log(`[Main Process] Preparing CSV content for ${exportType}. Record count: ${dataToExport.length}`);
-        const csvContent = convertToCSV(dataToExport, headers);
-
-        const window = BrowserWindow.fromWebContents(event.sender) || BrowserWindow.getFocusedWindow();
-        if (!window) {
-            console.error("[Main Process] Could not get window reference for save dialog.");
-            throw new Error('Could not get window reference for save dialog.');
-        }
-
-        const { canceled, filePath } = await dialog.showSaveDialog(window, {
-            title: `Save ${exportType.replace(/_/g, ' ')} Export`,
-            defaultPath: `${fileNamePrefix}-${new Date().toISOString().split('T')[0]}.csv`,
-            filters: [{ name: 'CSV Files', extensions: ['csv'] }]
-        });
-
-        if (canceled || !filePath) {
-            if (typeof logActivity === 'function') await logActivity(username, `Finished Data Export: ${exportType}`, 'Status: Cancelled');
-            return { success: true, message: 'Export cancelled by user.' };
-        }
-
-        fs.writeFileSync(filePath, csvContent, 'utf-8');
-        if (typeof logActivity === 'function') await logActivity(username, `Finished Data Export: ${exportType}`, `Status: Success, File: ${path.basename(filePath)}`);
-        return { success: true, message: `${exportType.replace(/_/g, ' ')} exported successfully to ${path.basename(filePath)}` };
-
-    } catch (error) {
-        console.error(`[Main Process] Critical error during generic export (${exportType}):`, error);
-        if (typeof logActivity === 'function') await logActivity(username, `Error during Data Export: ${exportType}`, error.message);
-        return { success: false, message: `Export failed for ${exportType.replace(/_/g, ' ')}: ${error.message}` };
-    }
-});
-
-ipcMain.handle('generate-report', async (event, { reportType, filters }) => {
-    const user = currentUser;
-    if (!user) return { success: false, message: "User not authenticated." };
-    console.log(`[Main Process] generate-report. Type: ${reportType}, Filters:`, filters);
-
-    try {
-        let result;
-        switch (reportType) {
-            case 'inventory_valuation': // Changed from current_stock for clarity
-                result = await db.getInventoryValuationReportData(filters);
-                break;
-            case 'sales_performance': // Changed from sales_summary_with_details
-                result = await db.getSalesPerformanceReportData(filters.period, filters.topItemsLimit);
-                break;
-            default:
-                return { success: false, message: `Unknown report type: ${reportType}` };
-        }
-
-        if (result.success) {
-            await logActivity(user.username, `Generated Report: ${reportType}`, `Filters: ${JSON.stringify(filters)}`);
-        } else {
-            await logActivity(user.username, `Failed to Generate Report: ${reportType}`, `Error: ${result.message || 'Unknown'}, Filters: ${JSON.stringify(filters)}`);
-        }
-        return result;
-
-    } catch (error) {
-        console.error(`[Main Process] Error generating report ${reportType}:`, error);
-        await logActivity(user.username, `Error Generating Report: ${reportType}`, `Error: ${error.message}`);
-        return { success: false, message: `Server error generating report: ${error.message}`, data: reportType === 'sales_performance' ? {} : [] };
-    }
-});
 
 // --- END OF FILE ---

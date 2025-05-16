@@ -237,175 +237,142 @@ export const db = {
   // These are NOT Supabase Auth functions. The IPC handlers in main.js will manage this.
 
   // --- ITEM MANAGEMENT FUNCTIONS ---
-  async getItems(filters = {}) {
-    if (!supabase) {
-      console.error("[db.getItems] Supabase client not initialized!");
-      return Promise.reject(new Error("Supabase client not initialized."));
-    }
-
-    try {
-      // Start with the base query from the view that already gives total_quantity
-      let query = supabase.from("items_with_total_quantity").select("*");
-
-      // Archival status filter
-      if (filters.is_archived !== undefined) {
-        query = query.eq("is_archived", filters.is_archived);
-      } else {
-        query = query.eq("is_archived", false); // Default to active items
+    async getItems(filters = {}) {
+      if (!supabase) {
+        console.error("[db.getItems] Supabase client not initialized!");
+        return Promise.reject(new Error("Supabase client not initialized."));
       }
 
-      // Category filter
-      if (filters.category) {
-        query = query.eq("category", filters.category);
-      }
+      try {
+        let query = supabase.from("items_with_total_quantity").select("*");
 
-      // Search term filter
-      if (filters.searchTerm) {
-        query = query.or(
-          `name.ilike.%${filters.searchTerm}%,sku.ilike.%${filters.searchTerm}%`
-        );
-      }
+        if (filters.is_archived !== undefined) {
+          query = query.eq("is_archived", filters.is_archived);
+        } else {
+          query = query.eq("is_archived", false);
+        }
 
-      // Sorting (uses total_quantity from the view if sorting by 'quantity')
-      const sortByCol = filters.sortBy || "name";
-      const sortOrderAsc = filters.sortOrder === "asc";
-      const effectiveSortBy =
-        sortByCol === "quantity" ? "total_quantity" : sortByCol;
-      query = query.order(effectiveSortBy, { ascending: sortOrderAsc });
-      if (effectiveSortBy !== "id") {
-        // Secondary sort for stability
-        query = query.order("id", { ascending: true });
-      }
+        if (filters.category) {
+          query = query.eq("category", filters.category);
+        }
 
-      // Execute the primary query to get the list of items matching basic filters
-      const { data: baseItems, error: baseItemsError } = await query;
-
-      if (baseItemsError) {
-        console.error(
-          "[db.getItems] Error fetching base items:",
-          baseItemsError
-        );
-        throw baseItemsError;
-      }
-
-      if (!baseItems || baseItems.length === 0) {
-        console.log("[db.getItems] No base items found matching criteria.");
-        return [];
-      }
-
-      // If stockAtLocationId is provided, enrich items with quantity_at_specific_location
-      if (
-        filters.stockAtLocationId !== undefined &&
-        filters.stockAtLocationId !== null
-      ) {
-        console.log(
-          `[db.getItems] Enriching items with stock for location ID: ${filters.stockAtLocationId}`
-        );
-
-        const itemIds = baseItems.map((item) => item.id);
-
-        // Fetch all relevant item_location_quantities in one go
-        const { data: locationQuantities, error: locQtyError } = await supabase
-          .from("item_location_quantities")
-          .select("item_id, quantity")
-          .eq("location_id", filters.stockAtLocationId)
-          .in("item_id", itemIds);
-
-        if (locQtyError) {
-          console.error(
-            `[db.getItems] Error fetching quantities for location ${filters.stockAtLocationId}:`,
-            locQtyError
+        if (filters.searchTerm) {
+          query = query.or(
+            `name.ilike.%${filters.searchTerm}%,sku.ilike.%${filters.searchTerm}%`
           );
-          // Decide how to handle: return baseItems, or throw, or return baseItems with quantity_at_specific_location as null/0
-          // For now, let's proceed but log the error. The map below will default to 0.
         }
 
-        // Create a map for quick lookup of quantities
-        const quantityMap = new Map();
-        if (locationQuantities) {
-          locationQuantities.forEach((lq) => {
-            quantityMap.set(lq.item_id, lq.quantity);
-          });
+        const sortByCol = filters.sortBy || "name";
+        const sortOrderAsc = filters.sortOrder === "asc";
+        const effectiveSortBy =
+          sortByCol === "quantity" ? "total_quantity" : sortByCol;
+        query = query.order(effectiveSortBy, { ascending: sortOrderAsc });
+        if (effectiveSortBy !== "id") {
+          query = query.order("id", { ascending: true });
         }
 
-        // Enrich baseItems
-        const enrichedItems = baseItems.map((item) => ({
-          ...item,
-          quantity_at_specific_location:
-            quantityMap.get(item.id) === undefined
-              ? 0
-              : quantityMap.get(item.id),
-          // If an item ID is not in quantityMap, it means it has 0 stock at that location or no record.
+        const { data: baseItems, error: baseItemsError } = await query;
+
+        if (baseItemsError) {
+          console.error("[db.getItems] Error fetching base items:", baseItemsError);
+          throw baseItemsError;
+        }
+
+        if (!baseItems || baseItems.length === 0) {
+          console.log("[db.getItems] No base items found matching criteria.");
+          return [];
+        }
+
+        let itemsToReturn = baseItems;
+
+        // --- MODIFICATION START ---
+        // Handle enrichment for specific location quantity, whether by ID or NAME
+        let specificLocationIdForEnrichment = null;
+
+        if (filters.stockAtLocationId !== undefined && filters.stockAtLocationId !== null) {
+          // This path is used by BundleFormPage (passes ID)
+          specificLocationIdForEnrichment = filters.stockAtLocationId;
+          console.log(`[db.getItems] Enriching items with stock for location ID: ${specificLocationIdForEnrichment}`);
+        } else if (filters.storageLocation) {
+          // This path is used by ItemManagementPage (passes NAME)
+          console.log(`[db.getItems] Filtering and enriching by storage location NAME: ${filters.storageLocation}`);
+          const { data: locationData, error: locationError } = await supabase
+            .from("storage_locations")
+            .select("id")
+            .eq("name", filters.storageLocation)
+            .single();
+
+          if (locationError) {
+              console.error(`[db.getItems] Error fetching ID for location name ${filters.storageLocation}:`, locationError);
+              // If location name doesn't resolve to an ID, we might return empty or all items without specific quantities
+              // For now, let's proceed, enrichment will yield 0 for specific quantities if ID is null.
+          }
+          if (locationData) {
+              specificLocationIdForEnrichment = locationData.id;
+              console.log(`[db.getItems] Resolved location name "${filters.storageLocation}" to ID: ${specificLocationIdForEnrichment}`);
+          } else {
+              console.warn(`[db.getItems] Could not find location ID for name: ${filters.storageLocation}. No location-specific quantities will be fetched.`);
+              // If no location ID, we effectively show no items if the intent was to filter by a non-existent location.
+              // Or, if the intent is to show all items if location is invalid, then don't filter itemsToReturn yet.
+              // For strict filtering by location name:
+              return []; // No items if the named location doesn't exist
+          }
+        }
+
+        if (specificLocationIdForEnrichment !== null) {
+          const itemIds = itemsToReturn.map((item) => item.id);
+          if (itemIds.length > 0) { // Only fetch if there are items to enrich
+              const { data: locationQuantities, error: locQtyError } = await supabase
+                .from("item_location_quantities")
+                .select("item_id, quantity")
+                .eq("location_id", specificLocationIdForEnrichment)
+                .in("item_id", itemIds);
+
+              if (locQtyError) {
+                console.error(
+                  `[db.getItems] Error fetching quantities for location ${specificLocationIdForEnrichment}:`,
+                  locQtyError
+                );
+              }
+
+              const quantityMap = new Map();
+              if (locationQuantities) {
+                locationQuantities.forEach((lq) => {
+                  quantityMap.set(lq.item_id, lq.quantity);
+                });
+              }
+
+              itemsToReturn = itemsToReturn.map((item) => ({
+                ...item,
+                quantity_at_specific_location: quantityMap.get(item.id) === undefined ? 0 : quantityMap.get(item.id),
+              }));
+
+              // If filtering by storageLocation (name), we also need to filter the list
+              // to only items that actually HAVE stock (or at least a record) at that location.
+              if (filters.storageLocation) { // This implies specificLocationIdForEnrichment was set via name
+                  itemsToReturn = itemsToReturn.filter(item => quantityMap.has(item.id));
+              }
+          }
+        }
+        // --- MODIFICATION END ---
+
+        console.log(
+          `[db.getItems] Fetched and processed ${itemsToReturn.length} items.`
+        );
+        // Ensure all items have quantity_at_specific_location, even if null/0, if no specific filter applied
+        return itemsToReturn.map(item => ({
+            ...item,
+            quantity_at_specific_location: item.quantity_at_specific_location === undefined ? null : item.quantity_at_specific_location
         }));
 
-        console.log(
-          `[db.getItems] Fetched and enriched ${enrichedItems.length} items.`
+      } catch (error) {
+        console.error(
+          "[db.getItems] General error in function execution:",
+          error.message
         );
-        return enrichedItems;
-      } else if (filters.storageLocation) {
-        // This block handles the old way of filtering by storageLocation NAME (for ItemManagementPage)
-        // It needs to be reconciled or ensure it doesn't interfere if stockAtLocationId is the primary way for BundleFormPage
-        console.log(
-          `[db.getItems] Filtering by storage location NAME: ${filters.storageLocation}`
-        );
-        // ... (your existing logic for filtering by storageLocation name, which fetches item IDs with stock > 0)
-        // This part might need adjustment if it's conflicting or if you want a unified approach.
-        // For now, I'll assume the `stockAtLocationId` path is what BundleFormPage uses.
-        // If ItemManagementPage also needs to show quantity_at_specific_location, this logic needs merging.
-
-        const { data: locationData, error: locationError } = await supabase
-          .from("storage_locations")
-          .select("id")
-          .eq("name", filters.storageLocation)
-          .single();
-
-        if (locationError) throw locationError;
-        if (!locationData) return []; // No such location
-
-        const locationIdToFilter = locationData.id;
-        const { data: itemIdsAtLocation, error: itemIdsError } = await supabase
-          .from("item_location_quantities")
-          .select("item_id")
-          .eq("location_id", locationIdToFilter)
-          .gt("quantity", 0);
-
-        if (itemIdsError) throw itemIdsError;
-
-        const distinctItemIds = [
-          ...new Set((itemIdsAtLocation || []).map((ilq) => ilq.item_id)),
-        ];
-        if (distinctItemIds.length === 0) return [];
-
-        // Filter the already fetched baseItems
-        const itemsAtNamedLocation = baseItems.filter((item) =>
-          distinctItemIds.includes(item.id)
-        );
-        // Note: itemsAtNamedLocation here will NOT have quantity_at_specific_location unless you add another enrichment step
-        // similar to the stockAtLocationId block.
-        return itemsAtNamedLocation;
+        throw error;
       }
-
-      // If no specific location filtering that requires quantity_at_specific_location, return baseItems
-      // (they will have total_quantity from the view, but quantity_at_specific_location will be undefined)
-      console.log(
-        `[db.getItems] Fetched ${baseItems.length} items without specific location enrichment.`
-      );
-      return baseItems.map((item) => ({
-        ...item,
-        // Ensure quantity_at_specific_location is at least null or 0 if not explicitly fetched
-        quantity_at_specific_location:
-          item.quantity_at_specific_location === undefined
-            ? null
-            : item.quantity_at_specific_location,
-      }));
-    } catch (error) {
-      console.error(
-        "[db.getItems] General error in function execution:",
-        error.message
-      );
-      throw error;
-    }
-  },
+    },
 
   async getItemById(itemId) {
     if (!supabase || !itemId)

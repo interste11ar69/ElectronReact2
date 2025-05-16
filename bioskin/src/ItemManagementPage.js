@@ -238,6 +238,7 @@ function ItemManagementPage({ currentUser }) {
                                 currentSortBy={sortBy}
                                 currentSortOrder={sortOrder}
                                 viewingArchived={showArchived} // Pass this to ItemList
+                                filteredLocationName={selectedStorage || null}
                                 // --- MODIFICATION END ---
                             />
                         )}

@@ -2,17 +2,16 @@
 import React, { useState, useEffect } from 'react';
 import './DashboardPage.css';
 import {
-    FaBell, FaUserCircle, FaPumpSoap, FaClipboardList, FaArrowDown
+    FaBell, FaUserCircle, FaPumpSoap, FaClipboardList, FaArrowDown, FaUndo
 } from 'react-icons/fa'; // FaDollarSign might be implicitly used by formatCurrency
-import { Line } from 'react-chartjs-2';
+import { Bar } from 'react-chartjs-2';
 import {
-  Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement,
-  Title, Tooltip, Legend, Filler
+  Chart as ChartJS, CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend, Filler
 } from 'chart.js';
 import { formatDistanceToNow } from 'date-fns';
 
 ChartJS.register(
-  CategoryScale, LinearScale, PointElement, LineElement,
+  CategoryScale, LinearScale, BarElement,
   Title, Tooltip, Legend, Filler
 );
 
@@ -22,9 +21,8 @@ const formatCurrency = (value, currency = 'PHP') => {
 
 function DashboardPage({ currentUser }) {
   const [totalProducts, setTotalProducts] = useState(0);
-  const [lowStockCount, setLowStockCount] = useState(0); // This will be updated by the backend
-  const [todaysSalesValue, setTodaysSalesValue] = useState(0);
-  const [newOrdersCount, setNewOrdersCount] = useState(0);
+  const [lowStockCount, setLowStockCount] = useState(0);
+  const [todaysReturnCount, setTodaysReturnCount] = useState(0);
   const [activityLog, setActivityLog] = useState([]);
   const [categoryOverviewChartData, setCategoryOverviewChartData] = useState({ labels: [], datasets: [] });
 
@@ -44,11 +42,17 @@ function DashboardPage({ currentUser }) {
       setStatsError(null);
       console.log("Dashboard: Fetching all dashboard stats (multi-location aware)...");
       try {
-        const [summaryRes, lowStockRes, salesRes, ordersRes] = await Promise.all([
+        // Get today's date in YYYY-MM-DD format
+        const today = new Date();
+        const yyyy = today.getFullYear();
+        const mm = String(today.getMonth() + 1).padStart(2, '0');
+        const dd = String(today.getDate()).padStart(2, '0');
+        const todayStr = `${yyyy}-${mm}-${dd}`;
+
+        const [summaryRes, lowStockRes, returnsRes] = await Promise.all([
           window.electronAPI.getInventorySummary(),
-          window.electronAPI.getLowStockItems(), // This call needs to return the accurate count
-          window.electronAPI.getTodaysSalesTotal(),
-          window.electronAPI.getNewOrdersCount()
+          window.electronAPI.getLowStockItems(),
+          window.electronAPI.getReturns()
         ]);
 
         if (!isMounted) return;
@@ -66,12 +70,25 @@ function DashboardPage({ currentUser }) {
             throw new Error(lowStockRes.message || 'Failed to load low stock count');
         }
 
-        if (salesRes.success) setTodaysSalesValue(salesRes.total || 0);
-        else console.warn("Dashboard: Sales data might be placeholder.", salesRes.message);
-
-
-        if (ordersRes.success) setNewOrdersCount(ordersRes.count || 0);
-        else console.warn("Dashboard: New orders data might be placeholder.", ordersRes.message);
+// Filter returnsRes for today's date
+        let todaysCount = 0;
+        if (Array.isArray(returnsRes)) {
+          const today = new Date();
+          const yyyy = today.getFullYear();
+          const mm = today.getMonth();
+          const dd = today.getDate();
+          const todayOnly = returnsRes.filter(ret => {
+            if (!ret || !ret.return_date) return false;
+            const retDate = new Date(ret.return_date);
+            return (
+              retDate.getFullYear() === yyyy &&
+              retDate.getMonth() === mm &&
+              retDate.getDate() === dd
+            );
+          });
+          todaysCount = todayOnly.length;
+        }
+        setTodaysReturnCount(todaysCount);
 
       } catch (err) {
         console.error("Dashboard: Error fetching stats:", err);
@@ -215,17 +232,10 @@ function DashboardPage({ currentUser }) {
               </div>
             </div>
             <div className="card stat-card">
-              <div className="stat-icon icon-todays-sales">₱</div>
+              <div className="stat-icon icon-todays-sales"><FaUndo /></div>
               <div className="stat-info">
-                <span>{isLoadingStats ? '...' : formatCurrency(todaysSalesValue)}</span>
-                <p>today's sales value</p>
-              </div>
-            </div>
-            <div className="card stat-card">
-              <div className="stat-icon icon-new-orders"><FaClipboardList /></div>
-              <div className="stat-info">
-                <span>{isLoadingStats ? '...' : newOrdersCount}</span>
-                <p>new orders today</p>
+                <span>{isLoadingStats ? '...' : todaysReturnCount}</span>
+                <p>products returned today</p>
               </div>
             </div>
             <div className="card stat-card">
@@ -243,7 +253,7 @@ function DashboardPage({ currentUser }) {
                 {isChartLoading && <p className="no-data-message">Loading chart data...</p>}
                 {chartError && <p className="no-data-message analytics-error" style={{border:'none', padding:0}}>{chartError}</p>}
                 {!isChartLoading && !chartError && categoryOverviewChartData.datasets && categoryOverviewChartData.datasets.length > 0 && categoryOverviewChartData.datasets[0].data.length > 0 ? (
-                    <Line options={lineChartOptions} data={categoryOverviewChartData} />
+                    <Bar options={lineChartOptions} data={categoryOverviewChartData} />
                 ) : (
                     !isChartLoading && !chartError && <p className="no-data-message">No category data available for chart.</p>
                 )}
@@ -259,11 +269,18 @@ function DashboardPage({ currentUser }) {
                 <ul>
                     {activityLog.map(log => (
                         <li key={log.id}>
-                            <span className="log-time" title={new Date(log.timestamp).toLocaleString()}>{formatLogTime(log.timestamp)}</span>
-                            <div>
-                                <span className="log-user">{log.user}:</span>
-                                <span className="log-action">{log.action}</span>
-                                {log.details && <span className="log-details">{log.details}</span>}
+                            <span className="log-avatar">
+                                {log.user && typeof log.user === 'string'
+                                    ? log.user.trim().split(' ').map(n => n[0]).join('').toUpperCase().slice(0,2)
+                                    : 'U'}
+                            </span>
+                            <div className="log-details-wrap">
+                                <span className="log-time" title={new Date(log.timestamp).toLocaleString()}>{formatLogTime(log.timestamp)}</span>
+                                <div>
+                                    <span className="log-user">{log.user}:</span>
+                                    <span className="log-action">{log.action}</span>
+                                    {log.details && <span className="log-details">{log.details}</span>}
+                                </div>
                             </div>
                         </li>
                     ))}

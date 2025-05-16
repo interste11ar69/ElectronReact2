@@ -96,9 +96,6 @@ function AppRouter() {
                     <Route path="/customers/:id/edit" element={<CustomerFormPage currentUser={currentUser} />} />
                     <Route path="/returns/process" element={<ReturnProcessingPage currentUser={currentUser} />} /> {/* Added currentUser prop */}
                     <Route path="/returns" element={<ReturnListPage />} />
-                    <Route path="/sales-orders" element={<SalesOrderListPage currentUser={currentUser} />} />
-                    <Route path="/sales-orders/new" element={<SalesOrderFormPage currentUser={currentUser} />} />
-                    <Route path="/sales-orders/:id" element={<SalesOrderFormPage currentUser={currentUser} />} />
                     <Route path="/inventory-movements" element={<InventoryMovementPage currentUser={currentUser} />} />
 
 

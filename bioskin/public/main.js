@@ -13,7 +13,7 @@ const path = require("path");
 const os = require("os"); // Needed for logActivity ID generation (optional)
 const fs = require("fs");
 const isDev = require("electron-is-dev");
-const { db } = require("../src/supabaseClient"); // Correct import
+const { unifiedDb: db } = require("../src/supabaseClient"); // Use unifiedDb for offline/online support
 const XLSX = require("xlsx");
 const Papa = require("papaparse");
 const TRANSACTION_TYPES = {
@@ -179,6 +179,7 @@ function createWindow() {
     height: 800,
     minWidth: 900, // Optional: Set minimum dimensions
     minHeight: 600,
+    fullscreen: true, // Launch in full screen
     title: "Bioskin Inventory Management System",
     icon: windowIcon || undefined, // Use default if loading failed
     webPreferences: {

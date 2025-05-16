@@ -70,9 +70,10 @@
 /* Stat Cards Section */
 .stat-cards-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: calc(var(--spacing-unit) * 4);
-  margin-bottom: calc(var(--spacing-unit) * 5);
+  grid-template-columns: repeat(3, 1fr);
+  gap: calc(var(--spacing-unit) * 6);
+  margin-bottom: calc(var(--spacing-unit) * 6);
+  justify-content: center;
 }
 
 .stat-card {
@@ -80,7 +81,15 @@
   display: flex;
   align-items: center;
   gap: calc(var(--spacing-unit) * 3);
-  border: 1px solid var(--dashboard-accent-yellow-border) !important; /* Uses updated yellow */
+  border: 1px solid var(--dashboard-accent-yellow-border) !important;
+  border-radius: 18px;
+  box-shadow: 0 2px 16px 0 rgba(80, 80, 80, 0.08);
+  background: #fff;
+  transition: box-shadow 0.2s, transform 0.2s;
+}
+.stat-card:hover {
+  box-shadow: 0 6px 24px 0 rgba(80, 80, 80, 0.16);
+  transform: translateY(-2px) scale(1.02);
 }
 
 .stat-card .stat-icon {
@@ -112,11 +121,13 @@
 }
 
 .stat-card .stat-info span {
-  font-size: 2em;
+  font-size: 2.3em;
   font-weight: 700;
   color: var(--color-text-dark);
   line-height: 1.1;
   margin-bottom: calc(var(--spacing-unit) * 0.5);
+  letter-spacing: -1px;
+  transition: color 0.2s;
 }
 .stat-card .stat-info p {
   margin: 0;
@@ -133,7 +144,10 @@
 /* Chart Section */
 .chart-container.info-card {
   padding: calc(var(--spacing-unit) * 4);
-  border: 1px solid var(--dashboard-accent-yellow-border) !important; /* Uses updated yellow */
+  border: 1px solid var(--dashboard-accent-yellow-border) !important;
+  border-radius: 18px;
+  box-shadow: 0 2px 16px 0 rgba(80, 80, 80, 0.08);
+  background: #fff;
 }
 
 .chart-container h3 {
@@ -157,8 +171,11 @@
     border: 1px solid var(--color-border-soft);
     border-left: 5px solid var(--dashboard-accent-yellow) !important;
     margin-top: calc(var(--spacing-unit) * 5);
-    display: flex; /* Make the panel a flex container */
-    flex-direction: column; /* Stack title and list vertically */
+    display: flex;
+    flex-direction: column;
+    border-radius: 18px;
+    box-shadow: 0 2px 16px 0 rgba(80, 80, 80, 0.08);
+    background: #fff;
 }
 
 .activity-log-panel h3 {
@@ -186,11 +203,33 @@
 }
 
 .activity-log-panel ul li {
-    font-size: 0.9em;
+    font-size: 0.97em;
     margin-bottom: calc(var(--spacing-unit) * 2.5);
     padding-bottom: calc(var(--spacing-unit) * 2.5);
     border-bottom: 1px dashed var(--color-border-soft);
     line-height: 1.5;
+    display: flex;
+    flex-direction: row;
+    align-items: flex-start;
+    gap: 10px;
+}
+.activity-log-panel ul li .log-avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: #e0e7ef;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    color: #6b7280;
+    font-size: 1.1em;
+    margin-right: 8px;
+    flex-shrink: 0;
+    box-shadow: 0 1px 4px 0 rgba(80,80,80,0.07);
+}
+.activity-log-panel ul li .log-details-wrap {
+    flex: 1;
     display: flex;
     flex-direction: column;
 }

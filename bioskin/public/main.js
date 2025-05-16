@@ -820,20 +820,21 @@ app.whenReady().then(() => {
     }
   });
 
-  ipcMain.handle("get-low-stock-items", async (event, threshold) => {
-    console.log("[main.js] IPC get-low-stock-items with threshold:", threshold);
-    try {
-      return await db.getLowStockItems(threshold);
-    } catch (error) {
-      console.error("[main.js] Error getting low stock items:", error);
-      logActivity(
-        currentUser?.username,
-        "Error getting low stock items",
-        error.message
-      );
-      return { success: false, message: error.message, items: [] };
-    }
+  ipcMain.handle("get-low-stock-items", async (event, threshold) => { // threshold is optional from frontend
+      console.log("[main.js] IPC get-low-stock-items with threshold:", threshold);
+      try {
+          // If you want to always check against "STORE" for the dashboard KPI:
+          return await db.getLowStockItems(threshold, "STORE");
+          // If you want it to be configurable or check all locations if item is low anywhere:
+          // return await db.getLowStockItems(threshold, null); // Pass null for specificLocationName to check total
+      } catch (error) {
+          console.error("[main.js] Error getting low stock items:", error);
+          logActivity(currentUser?.username, "Error getting low stock items", error.message);
+          return { success: false, message: error.message, items: [] };
+      }
   });
+
+
   ipcMain.handle("get-inventory-by-category", async () => {
     console.log("[main.js] IPC get-inventory-by-category");
     try {

@@ -22,7 +22,7 @@ const formatCurrency = (value, currency = 'PHP') => {
 
 function DashboardPage({ currentUser }) {
   const [totalProducts, setTotalProducts] = useState(0);
-  const [lowStockCount, setLowStockCount] = useState(0);
+  const [lowStockCount, setLowStockCount] = useState(0); // This will be updated by the backend
   const [todaysSalesValue, setTodaysSalesValue] = useState(0);
   const [newOrdersCount, setNewOrdersCount] = useState(0);
   const [activityLog, setActivityLog] = useState([]);
@@ -34,7 +34,7 @@ function DashboardPage({ currentUser }) {
   const [logError, setLogError] = useState(null);
   const [isChartLoading, setIsChartLoading] = useState(true);
   const [chartError, setChartError] = useState(null);
-  const [chartProxyInfo, setChartProxyInfo] = useState(''); // If chart uses proxy data
+  const [chartProxyInfo, setChartProxyInfo] = useState('');
 
   // Fetch Core Stats
   useEffect(() => {
@@ -45,8 +45,8 @@ function DashboardPage({ currentUser }) {
       console.log("Dashboard: Fetching all dashboard stats (multi-location aware)...");
       try {
         const [summaryRes, lowStockRes, salesRes, ordersRes] = await Promise.all([
-          window.electronAPI.getInventorySummary(), // Should now sum total_quantities
-          window.electronAPI.getLowStockItems(),    // Should check total_quantity per item
+          window.electronAPI.getInventorySummary(),
+          window.electronAPI.getLowStockItems(), // This call needs to return the accurate count
           window.electronAPI.getTodaysSalesTotal(),
           window.electronAPI.getNewOrdersCount()
         ]);
@@ -59,6 +59,7 @@ function DashboardPage({ currentUser }) {
             throw new Error(summaryRes.message || 'Failed to load total products');
         }
 
+        // The accuracy of lowStockCount depends on what lowStockRes.items.length is
         if (lowStockRes.success && Array.isArray(lowStockRes.items)) {
             setLowStockCount(lowStockRes.items.length || 0);
         } else {
@@ -92,28 +93,22 @@ function DashboardPage({ currentUser }) {
         setChartProxyInfo('');
         console.log("Dashboard: Fetching category overview chart data (multi-location aware)...");
         try {
-            // getInventoryByCategory should now sum quantities from item_location_quantities
             const result = await window.electronAPI.getInventoryByCategory();
             if (!isMounted) return;
 
             if (result.success && Array.isArray(result.data)) {
                 console.log("Dashboard: Received category overview data:", result.data);
-                // Assuming result.data is [{ category: 'X', total_quantity: N }, ...]
-                // or [{ category: 'X', total_value: N }, ...] depending on what you want to chart.
-                // Let's chart by total_quantity.
                 setCategoryOverviewChartData({
                     labels: result.data.map(cat => cat.category || 'Uncategorized'),
                     datasets: [{
                         label: 'Total Quantity by Category',
-                        data: result.data.map(cat => cat.total_quantity || 0), // Use total_quantity
+                        data: result.data.map(cat => cat.total_quantity || 0),
                         borderColor: 'var(--color-accent-secondary, #7986CB)',
-                        backgroundColor: 'rgba(121, 134, 203, 0.2)', // Softer version of accent-secondary
+                        backgroundColor: 'rgba(121, 134, 203, 0.2)',
                         tension: 0.3,
                         fill: true,
                     }],
                 });
-                 // If it was a proxy (like most stocked), setChartProxyInfo here.
-                 // For getInventoryByCategory, it's direct data.
             } else {
                  throw new Error(result.message || "Failed to load category overview chart data.");
             }
@@ -132,7 +127,7 @@ function DashboardPage({ currentUser }) {
   // Activity Log Effect
   useEffect(() => {
     let isMounted = true;
-    let cleanupListener = () => {}; // Initialize with a no-op function
+    let cleanupListener = () => {};
     setIsLogLoading(true);
     setLogError(null);
 
@@ -152,10 +147,9 @@ function DashboardPage({ currentUser }) {
     fetchLogs();
 
     try {
-        // Ensure onNewLogEntry returns a cleanup function or handle undefined
         const removeListener = window.electronAPI.onNewLogEntry((newEntry) => {
             if (isMounted) {
-                setActivityLog(prevLog => [newEntry, ...prevLog.slice(0, 49)]); // Keep max 50
+                setActivityLog(prevLog => [newEntry, ...prevLog.slice(0, 49)]);
             }
         });
         if (typeof removeListener === 'function') {
@@ -178,7 +172,7 @@ function DashboardPage({ currentUser }) {
     responsive: true, maintainAspectRatio: false,
     plugins: {
       legend: { position: 'bottom', labels: { color: 'var(--color-text-medium)', usePointStyle: true, boxWidth: 8, padding: 20 }},
-      title: { display: false }, // No main title for this chart, h3 serves as title
+      title: { display: false },
       tooltip: { backgroundColor: 'rgba(0,0,0,0.7)', titleFont: { size: 14 }, bodyFont: { size: 12 }, padding: 10, cornerRadius: 4 }
     },
     scales: {
@@ -198,10 +192,6 @@ function DashboardPage({ currentUser }) {
   if (isLoadingStats) {
     return <div className="container page-container analytics-loading">Loading dashboard data...</div>;
   }
-  // Display specific error for stats, but still try to render other parts if possible
-  // if (statsError) {
-  //   return <div className="container page-container analytics-error card">Error loading dashboard: {statsError}</div>;
-  // }
 
   return (
     <div className="dashboard-layout">
@@ -249,7 +239,7 @@ function DashboardPage({ currentUser }) {
 
           <div className="card info-card chart-container">
             <h3>Inventory Overview by Category {chartProxyInfo && <span style={{fontSize: '0.8em', fontWeight: 'normal', color: 'var(--color-text-medium)'}}>{chartProxyInfo}</span>}</h3>
-            <div style={{ height: '350px' }} className="chart-wrapper"> {/* Added class */}
+            <div style={{ height: '350px' }} className="chart-wrapper">
                 {isChartLoading && <p className="no-data-message">Loading chart data...</p>}
                 {chartError && <p className="no-data-message analytics-error" style={{border:'none', padding:0}}>{chartError}</p>}
                 {!isChartLoading && !chartError && categoryOverviewChartData.datasets && categoryOverviewChartData.datasets.length > 0 && categoryOverviewChartData.datasets[0].data.length > 0 ? (
@@ -273,7 +263,7 @@ function DashboardPage({ currentUser }) {
                             <div>
                                 <span className="log-user">{log.user}:</span>
                                 <span className="log-action">{log.action}</span>
-                                {log.details && <span className="log-details">{log.details}</span>} {/* Added class */}
+                                {log.details && <span className="log-details">{log.details}</span>}
                             </div>
                         </li>
                     ))}

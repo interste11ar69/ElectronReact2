@@ -14,8 +14,7 @@ import {
     FaFileInvoiceDollar, // For Sales Orders list
     FaCartPlus,
     FaListAlt,
-    FaExchangeAlt,
-    FaFileContract
+    FaExchangeAlt
     // Optional: For direct "New Sales Order" link
 } from 'react-icons/fa';
 import appLogo from './assets/logo.png';
@@ -47,7 +46,6 @@ function Sidebar({ onLogout, currentUser }) {
 
       const adminToolsLinks = [
           { path: '/analytics', label: 'Analytics', icon: <FaChartBar />, adminOnly: true },
-          { path: '/reports', label: 'Reports', icon: <FaFileContract />, adminOnly: true },
           { path: '/data-management', label: 'Data Management', icon: <FaDatabase />, adminOnly: true },
           { path: '/stock-adjustment', label: 'Stock Adjustments', icon: <FaSlidersH />, adminOnly: true },
           { path: '/bundles', label: 'Bundles/Kits', icon: <FaBoxes />, adminOnly: true },

@@ -734,39 +734,91 @@ export const db = {
   },
 
   // getLowStockItems: Stays the same.
-  async getLowStockItems(threshold = 10) {
-    if (!supabase)
-      return {
-        success: false,
-        message: "Database client not initialized.",
-        items: [],
-      };
-    try {
-      const { data, error } = await supabase
-        .from("items_with_total_quantity") // Uses the view
-        .select("id, name, sku, total_quantity, category") // Selects total_quantity
-        .eq("is_archived", false)
-        .lt("total_quantity", threshold)
-        .order("total_quantity", { ascending: true });
+  async getLowStockItems(threshold = null, specificLocationName = "STORE") { // threshold can be null if using item's own threshold
+          if (!supabase) return { success: false, message: "Database client not initialized.", items: [] };
+          try {
+              // 1. Get the ID of the specific location (e.g., "STORE")
+              let locationIdToFilter = null;
+              if (specificLocationName) {
+                  const { data: locData, error: locError } = await supabase
+                      .from('storage_locations')
+                      .select('id')
+                      .eq('name', specificLocationName)
+                      .eq('is_active', true)
+                      .single();
 
-      if (error) throw error;
+                  if (locError && locError.code !== 'PGRST116') throw locError;
+                  if (!locData) {
+                      console.warn(`[db.getLowStockItems] Location "${specificLocationName}" not found or inactive.`);
+                      // Decide behavior: return empty, or error, or fall back to total quantity check
+                      // For now, let's return empty if the specific store isn't found.
+                      return { success: true, items: [], message: `Location "${specificLocationName}" not found for low stock check.` };
+                  }
+                  locationIdToFilter = locData.id;
+              }
 
-      // AnalyticsPage.js (for the list) expects 'item.quantity'
-      // So, map total_quantity to quantity for this specific consumer.
-      const itemsToReturn = (data || []).map((item) => ({
-        ...item,
-        quantity: item.total_quantity, // Map here
-      }));
-      return { success: true, items: itemsToReturn };
-    } catch (error) {
-      console.error("[db.getLowStockItems] Error:", error);
-      return {
-        success: false,
-        message: error.message || "Failed to get low stock items.",
-        items: [],
-      };
-    }
-  },
+              // 2. Query items based on stock at the specific location vs. their individual low_stock_threshold
+              //    or a global threshold if provided and item.low_stock_threshold is null.
+              let query = supabase
+                  .from('items')
+                  .select(`
+                      id, name, sku, category, low_stock_threshold,
+                      item_location_quantities!inner (quantity)
+                  `)
+                  .eq('is_archived', false);
+
+              if (locationIdToFilter) {
+                  query = query.eq('item_location_quantities.location_id', locationIdToFilter);
+              }
+              // The filtering logic for "low stock" needs to happen after fetching,
+              // or by using a more complex SQL query/RPC because the comparison is dynamic.
+
+              const { data: itemsWithLocationStock, error } = await query;
+
+              if (error) throw error;
+
+              const lowStockList = (itemsWithLocationStock || [])
+                  .map(item => {
+                      // item.item_location_quantities should be an array, but with the .eq filter, it should have 0 or 1 element.
+                      // If !inner join was used, it could be empty. With inner, item won't appear if no stock record at location.
+                      const stockAtLocation = item.item_location_quantities[0]?.quantity;
+
+                      if (stockAtLocation === undefined || stockAtLocation === null) {
+                          // This item doesn't have a stock record at the specified location,
+                          // or the join didn't work as expected. Treat as 0 for low stock check.
+                          // Or, if using !inner, it might not appear at all.
+                          // With !inner, if an item has no record at the location, item_location_quantities will be empty.
+                          // For this logic, we assume if it's in itemsWithLocationStock, it has a record due to !inner.
+                          return null;
+                      }
+
+                      // Use item's own low_stock_threshold if available, otherwise the global threshold (if provided)
+                      const effectiveThreshold = item.low_stock_threshold !== null && item.low_stock_threshold !== undefined
+                                               ? item.low_stock_threshold
+                                               : (threshold !== null ? threshold : 0); // Default to 0 if no item threshold and no global threshold
+
+                      if (stockAtLocation < effectiveThreshold) {
+                          return {
+                              id: item.id,
+                              name: item.name,
+                              sku: item.sku,
+                              category: item.category,
+                              quantity: stockAtLocation, // This is quantity_at_specific_location
+                              low_stock_threshold: item.low_stock_threshold // For display/info
+                          };
+                      }
+                      return null;
+                  })
+                  .filter(item => item !== null) // Remove items that are not low stock
+                  .sort((a, b) => a.quantity - b.quantity); // Sort by quantity ascending
+
+              return { success: true, items: lowStockList };
+
+          } catch (error) {
+              console.error("[db.getLowStockItems] Error:", error);
+              return { success: false, message: error.message || "Failed to get low stock items.", items: [] };
+          }
+      },
 
   // NEW: Get inventory breakdown by category
   async getInventoryByCategory() {

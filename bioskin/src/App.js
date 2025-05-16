@@ -23,7 +23,7 @@ import BundleListPage from './BundleListPage';
 import BundleFormPage from './BundleFormPage';
 import InventoryMovementPage from './InventoryMovementPage';
 import StockTransferPage from './StockTransferPage';
-import ReportsPage from './ReportsPage';
+
 
 function ProtectedRoute({ user, children }) {
     const location = useLocation();
@@ -106,7 +106,6 @@ function AppRouter() {
                     {currentUser?.role === 'admin' && (
                         <>
                             <Route path="/analytics" element={<AnalyticsPage />} />
-                            <Route path="/reports" element={<ReportsPage />} />
                             <Route path="/bulk-update" element={<BulkUpdatePage />} />
                             <Route path="/data-management" element={<DataManagementPage />} />
                             <Route path="/initial-import" element={<InitialImportPage />} />

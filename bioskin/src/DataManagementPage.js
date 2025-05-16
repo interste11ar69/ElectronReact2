@@ -1,110 +1,142 @@
 // src/DataManagementPage.js
-import React, { useState } from 'react'; // <--- Import useState
+import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { FaFileUpload, FaPenSquare, FaUsers, FaFileExport, FaFileImport } from 'react-icons/fa';
+import {
+    FaFileUpload,   // For Import
+    FaPenSquare,    // For Bulk Update
+    FaUsers,        // For Customers
+    FaFileExport,   // Generic Export
+    FaFileImport,   // Generic Import
+    FaBoxes,        // For Inventory
+    FaFileInvoiceDollar // For Sales Orders
+} from 'react-icons/fa';
 import './DataManagementPage.css';
 
 function DataManagementPage() {
     const navigate = useNavigate();
-    // --- MOVED STATE HOOKS INSIDE THE COMPONENT ---
-    const [isExporting, setIsExporting] = useState(false);
-    const [exportMessage, setExportMessage] = useState('');
-    const [exportError, setExportError] = useState('');
-    // --- END OF MOVED STATE HOOKS ---
+    const [isProcessing, setIsProcessing] = useState(false); // Generic processing state
+    const [feedbackMessage, setFeedbackMessage] = useState('');
+    const [feedbackError, setFeedbackError] = useState('');
 
-    // --- DEFINED handleExportInventory INSIDE THE COMPONENT ---
-    const handleExportInventory = async () => {
-        setIsExporting(true);
-        setExportMessage('');
-        setExportError('');
-        console.log("Attempting to export inventory...");
+    const showFeedback = (type, message) => {
+        if (type === 'success') {
+            setFeedbackMessage(message);
+            setFeedbackError('');
+        } else {
+            setFeedbackError(message);
+            setFeedbackMessage('');
+        }
+        setTimeout(() => {
+            setFeedbackMessage('');
+            setFeedbackError('');
+        }, 7000); // Clear feedback after 7 seconds
+    };
+
+    // Generic export handler
+    const handleGenericExport = async (exportType, fileNamePrefix, description) => {
+        setIsProcessing(true);
+        showFeedback('', ''); // Clear previous feedback
+        console.log(`DataManagementPage: Attempting to export - ${description}`);
 
         try {
-            // Ensure window.electronAPI and exportInventory exist before calling
-            if (window.electronAPI && typeof window.electronAPI.exportInventory === 'function') {
-                const result = await window.electronAPI.exportInventory();
-                console.log("Export result:", result);
+            if (window.electronAPI && typeof window.electronAPI.exportGenericData === 'function') {
+                const result = await window.electronAPI.exportGenericData({
+                    exportType,
+                    fileNamePrefix,
+                    // Headers will be determined by main.js based on exportType
+                });
+                console.log(`DataManagementPage: Export result for ${exportType}:`, result);
                 if (result.success) {
-                    setExportMessage(result.message || 'Export completed successfully.');
+                    showFeedback('success', result.message || 'Export completed successfully.');
                 } else {
-                    setExportError(result.message || 'An unknown error occurred during export.');
+                    showFeedback('error', result.message || `An unknown error occurred during ${description} export.`);
                 }
             } else {
-                 // Handle the case where the function isn't exposed correctly
-                 throw new Error('Export function (window.electronAPI.exportInventory) is not available. Check preload.js and main.js setup.');
+                throw new Error('Generic export function (window.electronAPI.exportGenericData) is not available. Check preload.js and main.js setup.');
             }
         } catch (err) {
-            console.error("Export inventory error (frontend):", err);
-            setExportError(`An error occurred: ${err.message}`);
+            console.error(`DataManagementPage: Export error for ${exportType}:`, err);
+            showFeedback('error', `An error occurred: ${err.message}`);
         } finally {
-            setIsExporting(false);
-            // Optional: clear messages after a delay
-            setTimeout(() => {
-                setExportMessage('');
-                setExportError('');
-            }, 7000); // Clear messages after 7 seconds
+            setIsProcessing(false);
         }
     };
-    // --- END OF DEFINED handleExportInventory ---
 
-    // --- TASKS ARRAY (now uses state and handler defined above) ---
     const tasks = [
         {
             title: 'Initial Item Import',
             description: 'Upload a file to add multiple new items to the inventory system at once.',
-            path: '/initial-import', // Existing path
+            path: '/initial-import',
             icon: <FaFileImport />,
             buttonText: 'Go to Initial Import',
-            disabled: isExporting, // Disable while exporting
+            type: 'navigation',
+            disabled: isProcessing,
         },
         {
             title: 'Bulk Stock Update',
             description: 'Upload a file to update quantities for existing items (add, deduct, or set).',
-            path: '/bulk-update', // Existing path
+            path: '/bulk-update',
             icon: <FaPenSquare />,
             buttonText: 'Go to Bulk Update',
-            disabled: isExporting, // Disable while exporting
+            type: 'navigation',
+            disabled: isProcessing,
         },
-        // --- Future Placeholders ---
         {
-            title: 'Customer Data Import (Future)',
-            description: 'Upload a file to add multiple new customers to the system.',
-            path: '/data-management/customer-import', // Example new path
+            title: 'Export Comprehensive Inventory',
+            description: 'Download a CSV of all items, their quantities, and locations.',
+            action: () => handleGenericExport('comprehensive_inventory', 'comprehensive_inventory_export', 'Comprehensive Inventory'),
+            icon: <FaBoxes />, // Changed icon
+            buttonText: isProcessing ? 'Processing...' : 'Export Inventory Data',
+            type: 'action',
+            disabled: isProcessing,
+        },
+        {
+            title: 'Export Customer List',
+            description: 'Download a CSV of all customer data.',
+            action: () => handleGenericExport('customers', 'customer_list_export', 'Customer List'),
             icon: <FaUsers />,
-            buttonText: 'Import Customers',
-            disabled: true, // Keep disabled until implemented (or disable while exporting)
+            buttonText: isProcessing ? 'Processing...' : 'Export Customers',
+            type: 'action',
+            disabled: isProcessing,
         },
         {
-            title: 'Export Inventory Data',
-            description: 'Download a comprehensive CSV report of your current inventory stock.',
-            action: handleExportInventory, // Reference the function defined above
-            icon: <FaFileExport />,
-            buttonText: isExporting ? 'Exporting...' : 'Export Inventory', // Use state variable
-            disabled: isExporting, // Use state variable to disable during export
+            title: 'Export Sales Orders',
+            description: 'Download a CSV of all sales order headers and key details.',
+            action: () => handleGenericExport('sales_orders', 'sales_orders_export', 'Sales Orders'),
+            icon: <FaFileInvoiceDollar />,
+            buttonText: isProcessing ? 'Processing...' : 'Export Sales Orders',
+            type: 'action',
+            disabled: isProcessing,
         },
+        // --- Future Placeholder for Import ---
+        // {
+        //     title: 'Customer Data Import (Future)',
+        //     description: 'Upload a file to add multiple new customers to the system.',
+        //     path: '/data-management/customer-import', // Example new path
+        //     icon: <FaUsers />,
+        //     buttonText: 'Import Customers',
+        //     type: 'navigation',
+        //     disabled: true, // Keep disabled until implemented
+        // },
     ];
-    // --- END OF TASKS ARRAY ---
 
-    // --- JSX RENDER ---
     return (
         <div className="container data-management-page">
             <header className="page-header-alt" style={{ borderBottom: '1px solid var(--color-border-soft)', paddingBottom: '1rem', marginBottom: '2rem' }}>
-                {/* Fixed header content */}
                 <h1>Data Management</h1>
-                 <p style={{ marginTop: '-1rem', color: 'var(--color-text-medium)' }}>
-                    Manage your inventory and customer data through bulk file operations.
+                <p style={{ marginTop: '-0.5rem', color: 'var(--color-text-medium)', fontSize: '0.95em' }}>
+                    Manage bulk data operations such as imports and exports.
                 </p>
             </header>
 
-            {/* Feedback Area */}
-            {exportMessage && (
-                <div className="card" style={{ marginBottom: '1rem', padding: '1rem', backgroundColor: 'var(--color-status-success)', color: 'white', borderLeft: '5px solid darkgreen' }}>
-                    {exportMessage}
+            {feedbackMessage && (
+                <div className="card notification notification-success" role="alert"> {/* Assuming global notification styles */}
+                    {feedbackMessage}
                 </div>
             )}
-            {exportError && (
-                <div className="card" style={{ marginBottom: '1rem', padding: '1rem', backgroundColor: 'var(--color-status-danger)', color: 'white', borderLeft: '5px solid darkred' }}>
-                    Error: {exportError}
+            {feedbackError && (
+                <div className="card notification notification-error" role="alert"> {/* Assuming global notification styles */}
+                    Error: {feedbackError}
                 </div>
             )}
 
@@ -115,23 +147,23 @@ function DataManagementPage() {
                             <div className="task-icon">{task.icon}</div>
                             <h2>{task.title}</h2>
                             <p className="task-description">{task.description}</p>
-                            {/* Corrected button rendering logic */}
-                            {task.action && ( // If it has an action function (Export Button)
+
+                            {task.type === 'action' && task.action && (
                                 <button
                                     className="button button-primary"
                                     onClick={task.action}
-                                    disabled={task.disabled} // Use the disabled state from the task definition
+                                    disabled={task.disabled}
                                 >
-                                    {task.buttonText} {/* Use the button text from the task definition */}
+                                    {task.buttonText}
                                 </button>
                             )}
-                            {task.path && !task.action && ( // If it has a path and no action (Navigate Buttons)
+                            {task.type === 'navigation' && task.path && (
                                 <button
                                     className="button button-primary"
                                     onClick={() => navigate(task.path)}
-                                    disabled={task.disabled} // Use the disabled state from the task definition
+                                    disabled={task.disabled}
                                 >
-                                    {task.buttonText} {/* Use the button text from the task definition */}
+                                    {task.buttonText}
                                 </button>
                             )}
                         </div>
@@ -140,7 +172,6 @@ function DataManagementPage() {
             </main>
         </div>
     );
-    // --- END OF JSX RENDER ---
-} // End of DataManagementPage component
+}
 
-export default DataManagementPage; // Make sure export is present
+export default DataManagementPage;

@@ -101,59 +101,66 @@ async function logActivity(user, action, details = "") {
 }
 
 // --- CSV Helper Function (Defined Globally) ---
-function convertToCSV(data, headers) {
-  if (!data || data.length === 0) {
-    return "";
-  }
-  const headerKeys = headers || Object.keys(data[0]);
-  const headerString = headerKeys.join(",");
-  const rows = data.map((row) => {
-    return headerKeys
-      .map((key) => {
-        let cell =
-          row[key] === null || row[key] === undefined ? "" : String(row[key]);
-        if (cell.includes(",") || cell.includes('"') || cell.includes("\n")) {
-          cell = `"${cell.replace(/"/g, '""')}"`;
+        function convertToCSV(data, explicitHeaders) { // Modified to accept explicitHeaders
+            if (!data || data.length === 0) {
+                console.warn("[convertToCSV] No data provided to convert.");
+                return '';
+            }
+            // Use provided explicitHeaders or infer from the first object's keys
+            const headerKeys = explicitHeaders || Object.keys(data[0]);
+            const headerString = headerKeys.join(',');
+
+            const rows = data.map(row => {
+                return headerKeys.map(key => {
+                    let cell = row[key];
+                    if (cell === null || cell === undefined) {
+                        cell = '';
+                    } else {
+                        cell = String(cell);
+                    }
+                    if (cell.includes(',') || cell.includes('"') || cell.includes('\n')) {
+                        cell = `"${cell.replace(/"/g, '""')}"`;
+                    }
+                    return cell;
+                }).join(',');
+            });
+            return [headerString, ...rows].join('\n');
         }
-        return cell;
-      })
-      .join(",");
-  });
-  return [headerString, ...rows].join("\n");
-}
-function mapReasonToTransactionType(reasonString) {
-  if (!reasonString) return TRANSACTION_TYPES.UNKNOWN; // Fallback if reason is somehow empty
 
-  const reasonLower = String(reasonString).toLowerCase().trim(); // Ensure it's a string before toLowerCase
 
-  // More specific matches first
-  if (reasonLower === "goods received from factory")
-    return TRANSACTION_TYPES.GOODS_RECEIVED_FACTORY;
-  if (reasonLower === "cycle count adjustment")
-    return TRANSACTION_TYPES.CYCLE_COUNT;
-  if (reasonLower === "damaged goods write-off")
-    return TRANSACTION_TYPES.DAMAGED;
-  if (reasonLower === "expired stock write-off")
-    return TRANSACTION_TYPES.EXPIRED;
-  if (reasonLower === "internal use") return TRANSACTION_TYPES.INTERNAL_USE;
-  if (reasonLower === "stock transfer error correction")
-    return TRANSACTION_TYPES.TRANSFER_ERROR;
-  if (reasonLower === "found inventory") return TRANSACTION_TYPES.FOUND_STOCK;
-  if (reasonLower === "other (specify in notes)")
-    return TRANSACTION_TYPES.OTHER; // Exact match for this specific "Other"
+        function mapReasonToTransactionType(reasonString) {
+          if (!reasonString) return TRANSACTION_TYPES.UNKNOWN; // Fallback if reason is somehow empty
 
-  // Broader includes (be careful with order if keywords overlap)
-  if (reasonLower.includes("sample") || reasonLower.includes("marketing"))
-    return TRANSACTION_TYPES.MARKETING;
-  if (reasonLower.includes("gift") || reasonLower.includes("giveaway"))
-    return TRANSACTION_TYPES.GIFT;
+          const reasonLower = String(reasonString).toLowerCase().trim(); // Ensure it's a string before toLowerCase
 
-  // If no specific keyword match, log a warning and use a generic fallback.
-  console.warn(
-    `[mapReasonToTransactionType] Unmapped reason: '${reasonString}'. Defaulting to ${TRANSACTION_TYPES.UNKNOWN}. Consider adding a specific mapping if this reason is common.`
-  );
-  return TRANSACTION_TYPES.UNKNOWN;
-}
+          // More specific matches first
+          if (reasonLower === "goods received from factory")
+            return TRANSACTION_TYPES.GOODS_RECEIVED_FACTORY;
+          if (reasonLower === "cycle count adjustment")
+            return TRANSACTION_TYPES.CYCLE_COUNT;
+          if (reasonLower === "damaged goods write-off")
+            return TRANSACTION_TYPES.DAMAGED;
+          if (reasonLower === "expired stock write-off")
+            return TRANSACTION_TYPES.EXPIRED;
+          if (reasonLower === "internal use") return TRANSACTION_TYPES.INTERNAL_USE;
+          if (reasonLower === "stock transfer error correction")
+            return TRANSACTION_TYPES.TRANSFER_ERROR;
+          if (reasonLower === "found inventory") return TRANSACTION_TYPES.FOUND_STOCK;
+          if (reasonLower === "other (specify in notes)")
+            return TRANSACTION_TYPES.OTHER; // Exact match for this specific "Other"
+
+          // Broader includes (be careful with order if keywords overlap)
+          if (reasonLower.includes("sample") || reasonLower.includes("marketing"))
+            return TRANSACTION_TYPES.MARKETING;
+          if (reasonLower.includes("gift") || reasonLower.includes("giveaway"))
+            return TRANSACTION_TYPES.GIFT;
+
+          // If no specific keyword match, log a warning and use a generic fallback.
+          console.warn(
+            `[mapReasonToTransactionType] Unmapped reason: '${reasonString}'. Defaulting to ${TRANSACTION_TYPES.UNKNOWN}. Consider adding a specific mapping if this reason is common.`
+          );
+          return TRANSACTION_TYPES.UNKNOWN;
+        }
 
 // --- Create Window Function ---
 function createWindow() {
@@ -1281,141 +1288,95 @@ app.whenReady().then(() => {
   );
 
   // --- Export Handler ---
-  ipcMain.handle("export-inventory", async (event) => {
-    const username = currentUser?.username;
-    logActivity(username, "Started inventory export");
-    let result; // Define outside try
-
-    try {
-      // --- Start export logic ---
-      let items;
-      try {
-        items = await db.getAllItemsForExport();
-        if (!items || items.length === 0) {
-          console.log("[IPC export-inventory] No items found.");
-          result = {
-            success: true,
-            message: "No inventory items found to export.",
-          };
-          logActivity(
-            username,
-            "Finished inventory export",
-            "Status: Success (No data)"
-          );
-          return result; // Exit early
-        }
-        console.log(`[IPC export-inventory] Fetched ${items.length} items.`);
-      } catch (fetchError) {
-        console.error(
-          "[IPC export-inventory] Error fetching items:",
-          fetchError
-        );
-        throw new Error(
-          `Failed to fetch inventory data: ${fetchError.message}`
-        ); // Throw to outer catch
-      }
-
-      let csvContent;
-      try {
-        const headers = [
-          "sku",
-          "name",
-          "variant",
-          "description",
-          "category",
-          "storage_location",
-          "quantity",
-          "cost_price",
-          "status",
-          "created_at",
-          "updated_at",
-        ];
-        csvContent = convertToCSV(items, headers);
-        console.log("[IPC export-inventory] Formatted data to CSV.");
-      } catch (formatError) {
-        console.error(
-          "[IPC export-inventory] Error formatting data:",
-          formatError
-        );
-        throw new Error(`Failed to format data: ${formatError.message}`);
-      }
-
-      let filePath;
-      try {
-        const window =
-          BrowserWindow.fromWebContents(event.sender) ||
-          BrowserWindow.getFocusedWindow();
-        if (!window) {
-          throw new Error("Could not get window reference for save dialog.");
-        }
-        const { canceled, filePath: chosenPath } = await dialog.showSaveDialog(
-          window,
-          {
-            title: "Save Inventory Export",
-            defaultPath: `inventory-export-${
-              new Date().toISOString().split("T")[0]
-            }.csv`,
-            filters: [
-              { name: "CSV Files", extensions: ["csv"] },
-              { name: "All Files", extensions: ["*"] },
-            ],
+  ipcMain.handle('export-inventory', async (event) => {
+          const username = currentUser?.username; // Assuming currentUser is globally available
+          // Call your global logActivity function
+          if (typeof logActivity === 'function') {
+              await logActivity(username, 'Started inventory export');
+          } else {
+              console.warn("logActivity function not available for 'Started inventory export'");
           }
-        );
 
-        if (canceled || !chosenPath) {
-          console.log("[IPC export-inventory] User cancelled save.");
-          result = { success: true, message: "Export cancelled by user." };
-          logActivity(
-            username,
-            "Finished inventory export",
-            "Status: Cancelled"
-          );
-          return result; // Exit early
-        }
-        filePath = chosenPath;
-        console.log(`[IPC export-inventory] User selected path: ${filePath}`);
-      } catch (dialogError) {
-        console.error(
-          "[IPC export-inventory] Error showing save dialog:",
-          dialogError
-        );
-        throw new Error(`Failed to show save dialog: ${dialogError.message}`);
-      }
+          let result;
 
-      try {
-        fs.writeFileSync(filePath, csvContent, "utf-8");
-        console.log("[IPC export-inventory] Successfully wrote CSV file.");
-        result = {
-          success: true,
-          message: `Inventory exported successfully to ${path.basename(
-            filePath
-          )}`,
-        };
-        logActivity(
-          username,
-          "Finished inventory export",
-          `Status: Success, File: ${path.basename(filePath)}`
-        );
-        return result;
-      } catch (writeError) {
-        console.error(
-          "[IPC export-inventory] Error writing CSV file:",
-          writeError
-        );
-        throw new Error(`Failed to save file: ${writeError.message}`);
-      }
-      // --- End export logic ---
-    } catch (error) {
-      // Catch errors from any step within the export process
-      console.error("[main.js] Critical error during export inventory:", error);
-      logActivity(username, "Error during inventory export", error.message);
-      result = {
-        success: false,
-        message: `Export failed: ${error.message}`,
-      };
-      return result;
-    }
-  });
+          try {
+              let itemsData;
+              try {
+                  itemsData = await db.getAllItemsForExport(); // This calls the updated function
+                  if (!itemsData || itemsData.length === 0) {
+                      console.log('[IPC export-inventory] No item-location records found.');
+                      result = { success: true, message: 'No inventory data found to export.' };
+                      if (typeof logActivity === 'function') await logActivity(username, 'Finished inventory export', 'Status: Success (No data)');
+                      return result;
+                  }
+                  console.log(`[IPC export-inventory] Fetched ${itemsData.length} item-location records.`);
+              } catch (fetchError) {
+                  console.error('[IPC export-inventory] Error fetching items:', fetchError);
+                  throw new Error(`Failed to fetch inventory data: ${fetchError.message}`);
+              }
+
+              let csvContent;
+              try {
+                  const headers = [
+                      'item_id', 'sku', 'item_name', 'variant', 'description', 'category',
+                      'cost_price', 'item_status', 'is_archived', 'low_stock_threshold',
+                      'item_created_at', 'item_updated_at',
+                      'location_id', 'location_name', 'location_description', 'location_is_active',
+                      'quantity_at_location'
+                  ];
+                  csvContent = convertToCSV(itemsData, headers);
+                  console.log('[IPC export-inventory] Formatted data to CSV.');
+              } catch (formatError) {
+                  console.error('[IPC export-inventory] Error formatting data:', formatError);
+                  throw new Error(`Failed to format data: ${formatError.message}`);
+              }
+
+              let filePath;
+              try {
+                  const window = BrowserWindow.fromWebContents(event.sender) || BrowserWindow.getFocusedWindow();
+                  if (!window) {
+                      throw new Error('Could not get window reference for save dialog.');
+                  }
+                  const { canceled, filePath: chosenPath } = await dialog.showSaveDialog(window, {
+                     title: 'Save Comprehensive Inventory Export',
+                     defaultPath: `comprehensive-inventory-export-${new Date().toISOString().split('T')[0]}.csv`,
+                     filters: [ { name: 'CSV Files', extensions: ['csv'] }, { name: 'All Files', extensions: ['*'] } ]
+                  });
+
+                  if (canceled || !chosenPath) {
+                      console.log('[IPC export-inventory] User cancelled save.');
+                      result = { success: true, message: 'Export cancelled by user.' };
+                      if (typeof logActivity === 'function') await logActivity(username, 'Finished inventory export', 'Status: Cancelled');
+                      return result;
+                  }
+                  filePath = chosenPath;
+                  console.log(`[IPC export-inventory] User selected path: ${filePath}`);
+              } catch (dialogError) {
+                   console.error('[IPC export-inventory] Error showing save dialog:', dialogError);
+                  throw new Error(`Failed to show save dialog: ${dialogError.message}`);
+              }
+
+              try {
+                  fs.writeFileSync(filePath, csvContent, 'utf-8');
+                  console.log('[IPC export-inventory] Successfully wrote CSV file.');
+                  result = { success: true, message: `Inventory exported successfully to ${path.basename(filePath)}` };
+                  if (typeof logActivity === 'function') await logActivity(username, 'Finished inventory export', `Status: Success, File: ${path.basename(filePath)}`);
+                  return result;
+              } catch (writeError) {
+                   console.error('[IPC export-inventory] Error writing CSV file:', writeError);
+                  throw new Error(`Failed to save file: ${writeError.message}`);
+              }
+
+          } catch (error) {
+              console.error('[main.js] Critical error during export inventory:', error);
+              if (typeof logActivity === 'function') await logActivity(username, 'Error during inventory export', error.message);
+              result = {
+                  success: false,
+                  message: `Export failed: ${error.message}`
+              };
+              return result;
+          }
+      });
 
   // --- Activity Log Fetch Handler ---
   ipcMain.handle("get-activity-log", async () => {
@@ -2081,37 +2042,50 @@ ipcMain.handle("generate-order-number", async () => {
   }
 });
 
-ipcMain.handle(
-  "create-sales-order",
-  async (event, { orderData, orderItemsData }) => {
+ipcMain.handle('create-sales-order', async (event, { orderData, orderItemsData }) => {
     const user = currentUser;
-    if (!user) return { success: false, message: "Unauthorized" };
-    try {
-      // `created_by_user_id` is still important.
-      // `username_snapshot` specifically for initial logging inside createSalesOrder is now handled by db.getUserInfoForLogById
-      const fullOrderData = {
-        ...orderData,
-        created_by_user_id: user.id,
-        // No need to add username_snapshot: user.username here if db.createSalesOrder fetches it
-      };
-      const result = await db.createSalesOrder(fullOrderData, orderItemsData);
-      if (result.success) {
-        // The main activity log entry still benefits from direct username access
-        logActivity(
-          user.username,
-          "Created Sales Order",
-          `Order ID: ${result.order.id} (No: ${
-            result.order.order_number || ""
-          }), Total: ${result.order.total_amount}`
-        );
-      }
-      return result;
-    } catch (error) {
-      console.error("Error in create-sales-order IPC:", error);
-      return { success: false, message: error.message };
+    console.log('[Main Process] IPC create-sales-order received. User:', user?.username, 'OrderData:', orderData);
+
+    if (!user) {
+        console.error('[Main Process] Create Sales Order: Unauthorized - No user.');
+        return { success: false, message: "Unauthorized: User not logged in." }; // Ensure return
     }
-  }
-);
+    if (!orderData || !orderItemsData || orderItemsData.length === 0) {
+        console.error('[Main Process] Create Sales Order: Invalid payload - Missing orderData or orderItemsData.');
+        return { success: false, message: "Invalid order data: Order details or items are missing." }; // Ensure return
+    }
+
+    try {
+        const fullOrderData = {
+            ...orderData,
+            created_by_user_id: user.id
+        };
+        console.log('[Main Process] Calling db.createSalesOrder with fullOrderData and orderItemsData.');
+        const result = await db.createSalesOrder(fullOrderData, orderItemsData); // This calls supabaseClient
+
+        console.log('[Main Process] db.createSalesOrder result:', result); // <<< IMPORTANT LOG
+
+        if (result && result.success) { // Check if result and result.success exist
+            if (typeof logActivity === 'function') {
+                await logActivity(user.username, 'Created Sales Order', `Order ID: ${result.order?.id} (No: ${result.order?.order_number || ''}), Total: ${result.order?.total_amount}`);
+            }
+        } else {
+            // If result is defined but success is false, or result is undefined
+            if (typeof logActivity === 'function') {
+                await logActivity(user.username, 'Failed to Create Sales Order', result?.message || 'Unknown DB error during creation');
+            }
+        }
+        return result || { success: false, message: "Sales order creation failed with an undefined result from DB layer." }; // Ensure a return
+
+    } catch (error) {
+        console.error("[Main Process] Critical error in create-sales-order IPC handler:", error);
+        if (typeof logActivity === 'function') {
+            await logActivity(user.username, 'Error Creating Sales Order', `System Error: ${error.message}`);
+        }
+        // Ensure a structured error object is returned
+        return { success: false, message: `Server error during sales order creation: ${error.message}` };
+    }
+});
 
 ipcMain.handle("get-sales-orders", async (event, filters) => {
   try {
@@ -2475,5 +2449,137 @@ ipcMain.handle(
     }
   }
 );
+
+ipcMain.handle('export-generic-data', async (event, { exportType, fileNamePrefix }) => {
+    const username = currentUser?.username; // User performing the export
+    console.log(`[Main Process] IPC export-generic-data. Type: ${exportType}, Prefix: ${fileNamePrefix}`);
+    if (typeof logActivity === 'function') await logActivity(username, `Started Data Export: ${exportType}`);
+
+    let dataToExport;
+    let headers; // Define headers based on exportType
+
+    try {
+        switch (exportType) {
+            case 'comprehensive_inventory':
+                dataToExport = await db.getAllItemsForExport(); // This calls your detailed inventory export function
+                headers = [
+                    'item_id', 'sku', 'item_name', 'variant', 'description', 'category',
+                    'cost_price', 'item_status', 'is_archived', 'low_stock_threshold',
+                    'item_created_at', 'item_updated_at',
+                    'location_id', 'location_name', 'location_description', 'location_is_active',
+                    'quantity_at_location'
+                ];
+                break;
+            case 'customers':
+                dataToExport = await db.getCustomers({}); // Fetches all customer fields by default
+                // Define headers for customers, or let convertToCSV infer if all fields are desired and simple
+                headers = ['id', 'full_name', 'email', 'phone', 'address', 'notes', 'created_at', 'updated_at'];
+                break;
+            case 'sales_orders':
+                const rawSalesOrders = await db.getSalesOrders({}); // Fetches sales orders with nested customer
+                dataToExport = await Promise.all(rawSalesOrders.map(async so => {
+                    let createdByUsername = 'N/A';
+                    if (so.created_by_user_id) {
+                        const userInfo = await db.getUserInfoForLogById(so.created_by_user_id);
+                        createdByUsername = userInfo?.username || 'N/A (User Fetch Failed)';
+                    }
+                    // Format date for CSV consistency if desired, or leave as ISO string
+                    const formattedOrderDate = so.order_date ? new Date(so.order_date).toLocaleDateString('en-CA') : 'N/A'; // YYYY-MM-DD
+
+                    return {
+                        id: so.id,
+                        order_number: so.order_number,
+                        customer_name: so.customer?.full_name || 'N/A',
+                        order_date: formattedOrderDate,
+                        status: so.status,
+                        total_amount: so.total_amount,
+                        created_by_username: createdByUsername,
+                        notes: so.notes
+                    };
+                }));
+                headers = ['id', 'order_number', 'customer_name', 'order_date', 'status', 'total_amount', 'created_by_username', 'notes'];
+                break;
+            // Add more cases here for other export types like:
+            // case 'sales_order_items':
+            //     dataToExport = await db.getSalesOrderItemsForExport(); // You'd need to create this db function
+            //     headers = [/* ... headers for sales order items ... */];
+            //     break;
+            // case 'returns':
+            //     dataToExport = await db.getReturnRecords({}); // Your existing function
+            //     // You might need to flatten nested data (item, customer, user) like for sales_orders
+            //     headers = [/* ... headers for returns ... */];
+            //     break;
+            default:
+                console.error(`[Main Process] Unsupported export type received: ${exportType}`);
+                throw new Error(`Unsupported export type: ${exportType}`);
+        }
+
+        if (!dataToExport || dataToExport.length === 0) {
+            if (typeof logActivity === 'function') await logActivity(username, `Finished Data Export: ${exportType}`, 'Status: Success (No data)');
+            return { success: true, message: `No data found for ${exportType.replace(/_/g, ' ')} to export.` };
+        }
+
+        console.log(`[Main Process] Preparing CSV content for ${exportType}. Record count: ${dataToExport.length}`);
+        const csvContent = convertToCSV(dataToExport, headers);
+
+        const window = BrowserWindow.fromWebContents(event.sender) || BrowserWindow.getFocusedWindow();
+        if (!window) {
+            console.error("[Main Process] Could not get window reference for save dialog.");
+            throw new Error('Could not get window reference for save dialog.');
+        }
+
+        const { canceled, filePath } = await dialog.showSaveDialog(window, {
+            title: `Save ${exportType.replace(/_/g, ' ')} Export`,
+            defaultPath: `${fileNamePrefix}-${new Date().toISOString().split('T')[0]}.csv`,
+            filters: [{ name: 'CSV Files', extensions: ['csv'] }]
+        });
+
+        if (canceled || !filePath) {
+            if (typeof logActivity === 'function') await logActivity(username, `Finished Data Export: ${exportType}`, 'Status: Cancelled');
+            return { success: true, message: 'Export cancelled by user.' };
+        }
+
+        fs.writeFileSync(filePath, csvContent, 'utf-8');
+        if (typeof logActivity === 'function') await logActivity(username, `Finished Data Export: ${exportType}`, `Status: Success, File: ${path.basename(filePath)}`);
+        return { success: true, message: `${exportType.replace(/_/g, ' ')} exported successfully to ${path.basename(filePath)}` };
+
+    } catch (error) {
+        console.error(`[Main Process] Critical error during generic export (${exportType}):`, error);
+        if (typeof logActivity === 'function') await logActivity(username, `Error during Data Export: ${exportType}`, error.message);
+        return { success: false, message: `Export failed for ${exportType.replace(/_/g, ' ')}: ${error.message}` };
+    }
+});
+
+ipcMain.handle('generate-report', async (event, { reportType, filters }) => {
+    const user = currentUser;
+    if (!user) return { success: false, message: "User not authenticated." };
+    console.log(`[Main Process] generate-report. Type: ${reportType}, Filters:`, filters);
+
+    try {
+        let result;
+        switch (reportType) {
+            case 'inventory_valuation': // Changed from current_stock for clarity
+                result = await db.getInventoryValuationReportData(filters);
+                break;
+            case 'sales_performance': // Changed from sales_summary_with_details
+                result = await db.getSalesPerformanceReportData(filters.period, filters.topItemsLimit);
+                break;
+            default:
+                return { success: false, message: `Unknown report type: ${reportType}` };
+        }
+
+        if (result.success) {
+            await logActivity(user.username, `Generated Report: ${reportType}`, `Filters: ${JSON.stringify(filters)}`);
+        } else {
+            await logActivity(user.username, `Failed to Generate Report: ${reportType}`, `Error: ${result.message || 'Unknown'}, Filters: ${JSON.stringify(filters)}`);
+        }
+        return result;
+
+    } catch (error) {
+        console.error(`[Main Process] Error generating report ${reportType}:`, error);
+        await logActivity(user.username, `Error Generating Report: ${reportType}`, `Error: ${error.message}`);
+        return { success: false, message: `Server error generating report: ${error.message}`, data: reportType === 'sales_performance' ? {} : [] };
+    }
+});
 
 // --- END OF FILE ---

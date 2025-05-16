@@ -51,54 +51,71 @@ export { supabase };
 // Export the raw client if needed for direct use, though 'db' object is preferred
 
 function getDateRange(period) {
-  const today = new Date();
-  let startDate, endDate;
+    const PHT_OFFSET_HOURS = 8; // Philippines Time is UTC+8
 
-  endDate = new Date(
-    today.getFullYear(),
-    today.getMonth(),
-    today.getDate(),
-    23,
-    59,
-    59,
-    999
-  ); // End of today
+    // Get current date and time, then adjust to PHT 'now'
+    const nowUtc = new Date();
+    const nowPht = new Date(nowUtc.getTime() + PHT_OFFSET_HOURS * 60 * 60 * 1000);
 
-  if (period === "today") {
-    startDate = new Date(
-      today.getFullYear(),
-      today.getMonth(),
-      today.getDate(),
-      0,
-      0,
-      0,
-      0
-    );
-  } else if (period === "last7days") {
-    startDate = new Date(today);
-    startDate.setDate(today.getDate() - 6); // Include today, so go back 6 days
-    startDate.setHours(0, 0, 0, 0);
-  } else if (period === "last30days") {
-    startDate = new Date(today);
-    startDate.setDate(today.getDate() - 29); // Include today, so go back 29 days
-    startDate.setHours(0, 0, 0, 0);
-  } else {
-    // Default to today or handle custom range if you implement it
-    startDate = new Date(
-      today.getFullYear(),
-      today.getMonth(),
-      today.getDate(),
-      0,
-      0,
-      0,
-      0
-    );
-    console.warn(
-      `[getDateRange] Unknown period: ${period}, defaulting to today.`
-    );
-  }
-  return { startDate: startDate.toISOString(), endDate: endDate.toISOString() };
+    let phtStartOfDay, phtEndOfDay;
+    let queryStartDate, queryEndDate;
+
+    const phtYear = nowPht.getUTCFullYear(); // Use UTC methods on the PHT-adjusted date
+    const phtMonth = nowPht.getUTCMonth();   // to get components relative to PHT 'now'
+    const phtDate = nowPht.getUTCDate();
+
+    if (period === 'today') {
+        // Start of "today" in PHT
+        phtStartOfDay = new Date(Date.UTC(phtYear, phtMonth, phtDate, 0, 0, 0, 0));
+        // End of "today" in PHT
+        phtEndOfDay = new Date(Date.UTC(phtYear, phtMonth, phtDate, 23, 59, 59, 999));
+
+        queryStartDate = phtStartOfDay;
+        queryEndDate = phtEndOfDay;
+
+    } else if (period === 'last7days') {
+        // End of "today" in PHT
+        phtEndOfDay = new Date(Date.UTC(phtYear, phtMonth, phtDate, 23, 59, 59, 999));
+        // Start of the 7-day period in PHT (today and 6 previous days)
+        phtStartOfDay = new Date(Date.UTC(phtYear, phtMonth, phtDate, 0, 0, 0, 0));
+        phtStartOfDay.setUTCDate(phtStartOfDay.getUTCDate() - 6);
+
+        queryStartDate = phtStartOfDay;
+        queryEndDate = phtEndOfDay;
+
+    } else if (period === 'last30days') {
+        // End of "today" in PHT
+        phtEndOfDay = new Date(Date.UTC(phtYear, phtMonth, phtDate, 23, 59, 59, 999));
+        // Start of the 30-day period in PHT
+        phtStartOfDay = new Date(Date.UTC(phtYear, phtMonth, phtDate, 0, 0, 0, 0));
+        phtStartOfDay.setUTCDate(phtStartOfDay.getUTCDate() - 29);
+
+        queryStartDate = phtStartOfDay;
+        queryEndDate = phtEndOfDay;
+    } else {
+        console.warn(`[getDateRange] Unknown period: ${period}, defaulting to today (PHT).`);
+        phtStartOfDay = new Date(Date.UTC(phtYear, phtMonth, phtDate, 0, 0, 0, 0));
+        phtEndOfDay = new Date(Date.UTC(phtYear, phtMonth, phtDate, 23, 59, 59, 999));
+        queryStartDate = phtStartOfDay;
+        queryEndDate = phtEndOfDay;
+    }
+
+    // The queryStartDate and queryEndDate are now Date objects representing PHT day boundaries,
+    // but their internal value is based on UTC milliseconds. toISOString() will give their UTC representation.
+    const finalStartDateISO = queryStartDate.toISOString();
+    const finalEndDateISO = queryEndDate.toISOString();
+
+    console.log(`[getDateRange] Period: ${period}`);
+    console.log(`[getDateRange] PHT Now (for calculation): ${nowPht.toUTCString()} (displayed as UTC but represents PHT moment)`);
+    console.log(`[getDateRange] Query Start (UTC ISO for DB): ${finalStartDateISO}`);
+    console.log(`[getDateRange] Query End (UTC ISO for DB): ${finalEndDateISO}`);
+
+    return {
+        startDate: finalStartDateISO,
+        endDate: finalEndDateISO
+    };
 }
+
 export const db = {
   // --- CUSTOM AUTHENTICATION ---
   async login(username, password) {
@@ -187,40 +204,32 @@ export const db = {
   },
 
   async getUserInfoForLogById(userId) {
-    if (!supabase || !userId) {
-      console.warn(
-        "[db.getUserInfoForLogById] Supabase client not init or no userId provided. Returning default."
-      );
-      return { username: "System (Unknown User)" }; // Default/fallback
-    }
-    try {
-      const { data, error } = await supabase
-        .from("users")
-        .select("username") // Only fetch what's needed for the log snapshot
-        .eq("id", userId)
-        .single();
+      if (!supabase || !userId) {
+          console.warn('[db.getUserInfoForLogById] Supabase client not init or no userId provided.');
+          return { username: 'N/A (System)' }; // Default/fallback
+      }
+      try {
+          const { data, error } = await supabase
+              .from('users')
+              .select('username')
+              .eq('id', userId)
+              .single(); // Use single to expect one or zero
 
-      if (error) {
-        console.warn(
-          `[db.getUserInfoForLogById] Error fetching username for user ID ${userId}:`,
-          error.message
-        );
-        return { username: `System (User ID: ${userId})` }; // Fallback with ID
+          if (error) {
+              // PGRST116 means no user found for that ID, which is a valid case if FK is SET NULL or data is inconsistent
+              if (error.code === 'PGRST116') {
+                  console.warn(`[db.getUserInfoForLogById] User not found for ID ${userId}.`);
+                  return { username: `N/A (User ID: ${userId} Not Found)` };
+              }
+              console.warn(`[db.getUserInfoForLogById] Error fetching username for user ID ${userId}:`, error.message);
+              return { username: `N/A (Error)` };
+          }
+          // data will be null if no user is found and .single() is used without error code PGRST116 (shouldn't happen often)
+          return data ? { username: data.username } : { username: `N/A (User ID: ${userId} Not Found)` };
+      } catch (e) {
+          console.error(`[db.getUserInfoForLogById] Exception fetching username for user ID ${userId}:`, e.message);
+          return { username: `N/A (Exception)` };
       }
-      if (!data) {
-        console.warn(
-          `[db.getUserInfoForLogById] User not found for ID ${userId}.`
-        );
-        return { username: `System (User ID: ${userId} Not Found)` };
-      }
-      return { username: data.username }; // Return an object with the username
-    } catch (e) {
-      console.error(
-        `[db.getUserInfoForLogById] Exception fetching username for user ID ${userId}:`,
-        e.message
-      );
-      return { username: `System (User ID: ${userId} Exception)` }; // Fallback
-    }
   },
 
   // For custom auth, getCurrentUser and logout are managed by the application state
@@ -1068,32 +1077,73 @@ export const db = {
     }
   },
   async getAllItemsForExport() {
-    if (!supabase)
-      return Promise.reject(new Error("Supabase client not initialized."));
-    try {
-      // Select the columns you want in your CSV export
-      const { data, error } = await supabase
-        .from("items")
-        .select(
-          "sku, name, variant, description, category, storage_location, quantity, cost_price, status, created_at, updated_at"
-        ) // Customize columns as needed
-        .order("name", { ascending: true }); // Optional: order the export
+      if (!supabase) {
+        return Promise.reject(new Error("Supabase client not initialized."));
+      }
+      try {
+        const { data, error } = await supabase
+          .from('item_location_quantities')
+          .select(`
+            quantity,
+            item:items!inner (
+              id, sku, name, variant, description, category, cost_price, status, is_archived, low_stock_threshold, created_at, updated_at
+            ),
+            location:storage_locations!inner (
+              id, name, description, is_active
+            )
+          `)
+          // Optional filters:
+          // .eq('item.is_archived', false)
+          // .eq('location.is_active', true)
+          .order('name', { foreignTable: 'items', ascending: true })
+          .order('name', { foreignTable: 'location', ascending: true });
 
-      if (error) throw error;
-      console.log(
-        `[db.getAllItemsForExport] Fetched ${
-          data?.length ?? 0
-        } items for export.`
-      );
-      return data || []; // Ensure an array is always returned
-    } catch (error) {
-      console.error(
-        "[db.getAllItemsForExport] Error fetching items for export:",
-        error
-      );
-      throw error; // Re-throw to be caught by the caller in main.js
-    }
-  },
+        if (error) {
+          console.error("[db.getAllItemsForExport] Supabase error:", error);
+          throw error;
+        }
+
+        const flatData = (data || []).map(record => ({
+          item_id: record.item.id,
+          sku: record.item.sku,
+          item_name: record.item.name,
+          variant: record.item.variant,
+          description: record.item.description,
+          category: record.item.category,
+          cost_price: record.item.cost_price,
+          item_status: record.item.status,
+          is_archived: record.item.is_archived,
+          low_stock_threshold: record.item.low_stock_threshold,
+          item_created_at: record.item.created_at,
+          item_updated_at: record.item.updated_at,
+          location_id: record.location.id,
+          location_name: record.location.name,
+          location_description: record.location.description,
+          location_is_active: record.location.is_active,
+          quantity_at_location: record.quantity
+        }));
+
+        console.log(`[db.getAllItemsForExport] Fetched and transformed ${flatData.length} item-location records for export.`);
+        return flatData;
+
+      } catch (error) {
+        console.error("[db.getAllItemsForExport] Error fetching items for export:", error);
+        throw error;
+      }
+    },
+
+    async getTableData(tableName) {
+        if (!supabase) return Promise.reject(new Error("..."));
+        try {
+            const { data, error } = await supabase.from(tableName).select('*');
+            if (error) throw error;
+            return data || [];
+        } catch (err) {
+            console.error(`Error fetching data for table ${tableName}:`, err);
+            throw err;
+        }
+    },
+
   // --- ACTIVITY LOG FUNCTIONS ---
   async addActivityLogEntry(entryData) {
     // entryData should be an object like { user_identifier: '...', action: '...', details: '...' }
@@ -1898,124 +1948,189 @@ user:users ( id, username )
   // --- END BUNDLE MANAGEMENT FUNCTIONS ---
   // --- SALES ORDER FUNCTIONS ---
   async createSalesOrder(orderData, orderItemsData) {
-    // ... (initial part)
-    try {
-      // ... (insert order and order_items) ...
-
-      if (newOrder.status === "Fulfilled") {
-        console.log(
-          `[db.createSalesOrder] Order ${newOrderId} (${
-            newOrder.order_number || ""
-          }) created as Fulfilled. Validating stock & processing deductions.`
-        );
-
-        const performingUserInfo = await db.getUserInfoForLogById(
-          newOrder.created_by_user_id
-        );
-        const storeLocationId = await db.getStoreLocationId();
-
-        if (!storeLocationId) {
-          /* ... handle error: STORE not found ... */
-        }
-        console.log(
-          `[db.createSalesOrder] Using STORE Location ID for fulfillment: ${storeLocationId}`
-        );
-
-        // --- PRE-FULFILLMENT STOCK VALIDATION (similar to updateSalesOrderStatus) ---
-        const stockShortfalls = [];
-        for (const item of orderItemsData) {
-          // Use orderItemsData as newOrder.order_items might not be populated yet
-          const requiredQuantityForSale = parseInt(item.quantity, 10);
-          if (item.item_id) {
-            // ... (check stock for item.item_id at storeLocationId) ...
-            // Example:
-            const { data: locQtyData } = await supabase
-              .from("item_location_quantities")
-              .select("quantity")
-              .eq("item_id", item.item_id)
-              .eq("location_id", storeLocationId)
-              .single();
-            const currentStockAtStore = locQtyData ? locQtyData.quantity : 0;
-            if (currentStockAtStore < requiredQuantityForSale)
-              stockShortfalls.push(
-                `${
-                  item.item_snapshot_name || `Item ID ${item.item_id}`
-                }: Requires ${requiredQuantityForSale}, Store: ${currentStockAtStore}`
-              );
-          } else if (item.bundle_id) {
-            // ... (check stock for all components of item.bundle_id at storeLocationId) ...
-            // This logic would be similar to the bundle check in updateSalesOrderStatus
-          }
-        }
-        if (stockShortfalls.length > 0) {
-          const shortfallMessage =
-            "Cannot create fulfilled order. Insufficient stock at STORE: " +
-            stockShortfalls.join("; ");
-          console.warn(
-            `[db.createSalesOrder] Stock shortfall for new order ${newOrderId}: ${shortfallMessage}`
-          );
-          // IMPORTANT: Order & items are already created. Change status to Pending.
-          await supabase
-            .from("sales_orders")
-            .update({
-              status: "Pending",
-              notes:
-                (newOrder.notes || "") + ` AUTO-PENDING: ${shortfallMessage}`,
-            })
-            .eq("id", newOrderId);
-          return {
-            success: false,
-            message: shortfallMessage,
-            order: { ...newOrder, status: "Pending" },
-            isStockError: true,
-          };
-        }
-        // --- END PRE-FULFILLMENT STOCK VALIDATION ---
-
-        // If validation passes, proceed with deductions (as before, using storeLocationId)
-        for (const item of orderItemsData) {
-          // ... (deduction logic using storeLocationId) ...
-        }
+      if (!supabase) {
+        console.error("[db.createSalesOrder] Supabase client not initialized.");
+        return { success: false, message: "Database client not initialized." }; // Ensure return
       }
-      return {
-        success: true,
-        order: newOrder,
-        message: `Sales Order ${newOrder.order_number || newOrder.id} created.`,
-      };
-    } catch (error) {
-      /* ... */
-    }
-  },
+      if (!orderData.created_by_user_id) {
+          console.error("[db.createSalesOrder] created_by_user_id is missing in orderData.");
+          return { success: false, message: "Internal error: User ID for order creation is missing." };
+      }
 
-  async getSalesOrders(filters = {}) {
-    // e.g., filters.status, filters.customerId, filters.searchTerm
-    if (!supabase)
-      return Promise.reject(new Error("Supabase client not initialized."));
-    try {
-      let query = supabase
-        .from("sales_orders")
-        .select(
-          `
-*,
-customer:customers(id, full_name),
-order_items:sales_order_items(*)
-`
-        )
-        .order("order_date", { ascending: false });
 
-      if (filters.status) query = query.eq("status", filters.status);
-      if (filters.customerId)
-        query = query.eq("customer_id", filters.customerId);
-      // Add more filters as needed
+      let newOrderId = null;
+      console.log("[db.createSalesOrder] Attempting to insert sales_orders header:", orderData);
+      try {
+        const { data: newOrder, error: orderError } = await supabase
+          .from("sales_orders")
+          .insert([orderData]) // orderData should contain created_by_user_id
+          .select()
+          .single();
 
-      const { data, error } = await query;
-      if (error) throw error;
-      return data || [];
-    } catch (error) {
-      console.error("[db.getSalesOrders] Error:", error);
-      throw error;
-    }
-  },
+        if (orderError) {
+          console.error("[db.createSalesOrder] Supabase error inserting sales_orders header:", orderError);
+          throw orderError; // This will be caught by the outer catch block
+        }
+        if (!newOrder) {
+          console.error("[db.createSalesOrder] Sales order header creation failed to return data.");
+          // This path should ideally not be hit if orderError is handled, but as a safeguard:
+          return { success: false, message: "Sales order header creation failed (no data returned)." };
+        }
+        newOrderId = newOrder.id;
+        console.log(`[db.createSalesOrder] Sales order header created. ID: ${newOrderId}, Order#: ${newOrder.order_number}`);
+
+        const itemsToInsert = orderItemsData.map((item) => ({ ...item, sales_order_id: newOrderId }));
+        console.log("[db.createSalesOrder] Attempting to insert sales_order_items:", itemsToInsert);
+        const { error: itemsError } = await supabase.from("sales_order_items").insert(itemsToInsert);
+
+        if (itemsError) {
+          console.error(`[db.createSalesOrder] Supabase error inserting sales_order_items for order ${newOrderId}:`, itemsError);
+          // Attempt to rollback the sales_order header if items fail
+          if (newOrderId) {
+            console.warn(`[db.createSalesOrder] Rolling back sales_order header ID: ${newOrderId} due to item insertion failure.`);
+            await supabase.from("sales_orders").delete().eq("id", newOrderId);
+          }
+          throw new Error(`Failed to add items to sales order: ${itemsError.message}. Order creation rolled back.`);
+        }
+        console.log(`[db.createSalesOrder] Sales order items inserted successfully for order ID: ${newOrderId}`);
+
+        // Stock deduction logic if order is created directly as "Fulfilled"
+        if (newOrder.status === "Fulfilled") {
+          console.log(`[db.createSalesOrder] Order ${newOrderId} (${newOrder.order_number || ''}) created as Fulfilled. Processing stock deductions.`);
+
+          const userInfo = await db.getUserInfoForLogById(newOrder.created_by_user_id);
+          if (!userInfo || !userInfo.username) { // Check if userInfo or username is valid
+              console.error(`[db.createSalesOrder] Could not fetch username for user ID ${newOrder.created_by_user_id} for stock deduction log.`);
+              // Decide if this is a critical failure or if 'System' can be used as fallback.
+              // For now, let's make it critical as user context is important for transactions.
+              throw new Error("Failed to retrieve user information for stock deduction logging.");
+          }
+
+          for (const item of orderItemsData) {
+            let deductionResult;
+            const commonTransactionNotes = `Sale for NEW Order #${newOrder.order_number || newOrder.id}, Item: ${item.item_snapshot_name || (item.item_id ? `Item ID ${item.item_id}` : `Bundle ID ${item.bundle_id}`)}`;
+
+            if (item.item_id) {
+              const transactionDetails = {
+                  transactionType: 'SALE_ITEM_DEDUCTION',
+                  referenceId: String(newOrderId),
+                  referenceType: 'SALES_ORDER_ITEM',
+                  userId: newOrder.created_by_user_id,
+                  usernameSnapshot: userInfo.username,
+                  notes: commonTransactionNotes
+              };
+              // Ensure adjustStockQuantity is called with locationId if applicable
+              // For a simple sale, you might deduct from a default 'STORE' location.
+              // This requires knowing the storeLocationId.
+              // This part of your logic needs to define *which location* to deduct from.
+              // For now, I'll assume you have a way to get this, or it's handled in adjustStockQuantity if no locationId is passed (which is not ideal).
+              // Let's assume for now that sales always deduct from the primary "STORE" location.
+              const storeLocationId = await db.getStoreLocationId(); // You'd need this function
+              if (!storeLocationId) throw new Error("Primary STORE location ID not found for stock deduction.");
+
+              deductionResult = await db.adjustStockQuantity(item.item_id, storeLocationId, -Math.abs(item.quantity), transactionDetails);
+            } else if (item.bundle_id) {
+              const bundleSaleContext = {
+                  salesOrderId: newOrderId,
+                  salesOrderNumber: newOrder.order_number || `SO-${newOrder.id}`,
+                  userId: newOrder.created_by_user_id,
+                  usernameSnapshot: userInfo.username,
+                  storeLocationId: await db.getStoreLocationId() // Bundles also sold from STORE
+              };
+              if (!bundleSaleContext.storeLocationId) throw new Error("Primary STORE location ID not found for bundle component deduction.");
+              deductionResult = await db.processBundleSale(item.bundle_id, item.quantity, bundleSaleContext);
+            }
+
+            if (!deductionResult || !deductionResult.success) {
+              const productName = item.item_snapshot_name || (item.item_id ? `Item ID ${item.item_id}` : `Bundle ID ${item.bundle_id}`);
+              // Attempt to rollback order if stock deduction fails
+              console.error(`[db.createSalesOrder] Rolling back order ${newOrderId} due to stock deduction failure for ${productName}.`);
+              await supabase.from("sales_order_items").delete().eq("sales_order_id", newOrderId);
+              await supabase.from("sales_orders").delete().eq("id", newOrderId);
+              throw new Error(`Order created, but failed to deduct stock for ${productName}. Fulfillment incomplete. Error: ${deductionResult?.message}. Order rolled back.`);
+            }
+          }
+          console.log(`[db.createSalesOrder] Stock deductions complete for newly created fulfilled order ${newOrderId}.`);
+        }
+        return { success: true, order: newOrder, message: `Sales Order ${newOrder.order_number || `ID-${newOrder.id}`} created successfully.` }; // Ensure return
+
+      } catch (error) {
+        console.error("[db.createSalesOrder] Error in main try-catch:", error);
+        // If newOrderId was set, it means the header might have been created.
+        // The item insertion failure or stock deduction failure should handle rollback.
+        return { success: false, message: error.message || "Failed to create sales order due to a server-side issue." }; // Ensure return
+      }
+    },
+
+   async getSalesOrders(filters = {}) {
+      if (!supabase) return Promise.reject(new Error("Supabase client not initialized."));
+      try {
+        let query = supabase
+          .from("sales_orders")
+          .select(
+            `
+              id,
+              order_number,
+              order_date,
+              status,
+              total_amount,
+              notes,
+              created_by_user_id,
+              customer:customers(id, full_name),
+              order_items:sales_order_items(*)  // <<< ADD THIS LINE BACK
+            `
+            // The user join (user:users!...) is still kept out here because we are manually
+            // fetching user info in main.js for the export feature to ensure reliability.
+            // For the SalesOrderListPage display, if you need created_by_username directly,
+            // you'd re-add the user join here too, but be mindful of the previous issue.
+            // If the list page doesn't display created_by_username, then this is fine.
+          )
+          .order("order_date", { ascending: false });
+
+        if (filters.status) query = query.eq("status", filters.status);
+        if (filters.customerId) query = query.eq("customer_id", filters.customerId);
+        // Add more filters as needed
+
+        const { data, error } = await query;
+        if (error) {
+          console.error("[db.getSalesOrders] Supabase select error:", error);
+          throw error;
+        }
+        // console.log("[db.getSalesOrders] Fetched orders:", data); // For debugging
+        return data || [];
+      } catch (error) {
+        console.error("[db.getSalesOrders] Catch block error:", error);
+        throw error;
+      }
+    },
+
+    // Ensure db.getUserInfoForLogById is correctly defined as per previous instructions
+    async getUserInfoForLogById(userId) {
+        if (!supabase || !userId) {
+            console.warn('[db.getUserInfoForLogById] Supabase client not init or no userId provided.');
+            return { username: 'N/A (System)' };
+        }
+        try {
+            const { data, error } = await supabase
+                .from('users')
+                .select('username')
+                .eq('id', userId)
+                .single();
+
+            if (error) {
+                if (error.code === 'PGRST116') {
+                    console.warn(`[db.getUserInfoForLogById] User not found for ID ${userId}.`);
+                    return { username: `N/A (User ID: ${userId} Not Found)` };
+                }
+                console.warn(`[db.getUserInfoForLogById] Error fetching username for user ID ${userId}:`, error.message);
+                return { username: `N/A (Error)` };
+            }
+            return data ? { username: data.username } : { username: `N/A (User ID: ${userId} Not Found)` };
+        } catch (e) {
+            console.error(`[db.getUserInfoForLogById] Exception fetching username for user ID ${userId}:`, e.message);
+            return { username: `N/A (Exception)` };
+        }
+    },
 
   async getSalesOrderById(orderId) {
     if (!supabase)
@@ -2790,50 +2905,199 @@ user:users (id, username)
   },
 
   async getSalesDetailReport(filters = {}) {
-    // filters: { period (maps to startDate, endDate), customerId, itemId, bundleId }
-    if (!supabase)
-      return { success: false, message: "DB client not init.", data: [] };
-    try {
-      const { startDate, endDate } = getDateRange(
-        filters.period || "last30days"
-      );
+          if (!supabase) {
+              console.error("[db.getSalesDetailReport] Supabase client not initialized.");
+              return { success: false, message: "Database client not initialized.", data: [] };
+          }
 
-      let query = supabase
-        .from("sales_order_items")
-        .select(
-          `
-                         *,
-                         sales_orders!inner (order_number, order_date, status, customer:customers (id, full_name)),
-                         item:items (id, name, category),
-                         bundle:bundles (id, name)
-                     `
-        )
-        .gte("sales_orders.order_date", startDate)
-        .lte("sales_orders.order_date", endDate);
-      // .eq('sales_orders.status', 'Fulfilled') // Optional: only fulfilled, or all? For sales detail, often all.
-      if (filters.customerId) {
-        query = query.eq("sales_orders.customer_id", filters.customerId);
-      }
-      if (filters.itemId) {
-        query = query.eq("item_id", filters.itemId);
-      }
-      if (filters.bundleId) {
-        query = query.eq("bundle_id", filters.bundleId);
-      }
-      // Add category filter if needed (would require joining items/bundles then filtering)
+          const period = filters.period || 'last30days'; // Default if not provided
+          console.log(`[db.getSalesDetailReport] Attempting to fetch for period: ${period}`);
 
-      const { data, error } = await query.order("order_date", {
-        foreignTable: "sales_orders",
-        ascending: false,
-      });
+          try {
+              const { startDate, endDate } = getDateRange(period); // Uses the PHT-aware function
+              console.log(`[db.getSalesDetailReport] Using PHT-aligned date range for Supabase query - Start: ${startDate}, End: ${endDate}`);
 
-      if (error) throw error;
-      return { success: true, data: data || [] };
-    } catch (error) {
-      console.error("[db.getSalesDetailReport] Error:", error);
-      return { success: false, message: error.message, data: [] };
-    }
-  },
+              let query = supabase
+                  .from('sales_order_items') // Querying the line items table
+                  .select(`
+                      id,
+                      item_snapshot_name,
+                      item_snapshot_sku,
+                      quantity,
+                      unit_price,
+                      line_total,
+                      sales_orders!inner (
+                          id,
+                          order_number,
+                          order_date,
+                          status,
+                          customer:customers (id, full_name)
+                      ),
+                      item:items (id, name, category),
+                      bundle:bundles (id, name)
+                  `)
+                  // Filter by order_date from the joined sales_orders table
+                  .gte('sales_orders.order_date', startDate)
+                  .lte('sales_orders.order_date', endDate);
+
+              // Optional: If you only want 'Fulfilled' sales in this detail report
+              // query = query.eq('sales_orders.status', 'Fulfilled');
+
+              // Apply additional filters if provided
+              if (filters.customerId) {
+                  query = query.eq('sales_orders.customer_id', filters.customerId);
+                  console.log(`[db.getSalesDetailReport] Applied filter - Customer ID: ${filters.customerId}`);
+              }
+              if (filters.itemId) {
+                  query = query.eq('item_id', filters.itemId); // Assumes item_id is directly on sales_order_items
+                  console.log(`[db.getSalesDetailReport] Applied filter - Item ID: ${filters.itemId}`);
+              }
+              if (filters.bundleId) {
+                  query = query.eq('bundle_id', filters.bundleId); // Assumes bundle_id is directly on sales_order_items
+                  console.log(`[db.getSalesDetailReport] Applied filter - Bundle ID: ${filters.bundleId}`);
+              }
+
+              // Order the results
+              query = query.order('order_date', { foreignTable: 'sales_orders', ascending: false })
+                           .order('id', { ascending: false }); // Secondary sort for consistent order of items within the same order date
+
+              const { data, error } = await query;
+
+              if (error) {
+                  console.error('[db.getSalesDetailReport] Supabase Query Error:', error);
+                  return { success: false, message: `Database Query Error: ${error.message}`, data: [] };
+              }
+
+              console.log(`[db.getSalesDetailReport] Successfully fetched ${data ? data.length : 0} sales detail records.`);
+              // If you want to see a sample of the data for debugging:
+              // if (data && data.length > 0) {
+              //     console.log('[db.getSalesDetailReport] Sample of fetched data:', JSON.stringify(data.slice(0, 2), null, 2));
+              // }
+
+              return { success: true, data: data || [] };
+
+          } catch (error) { // Catch any other unexpected errors (e.g., from getDateRange if it threw)
+              console.error('[db.getSalesDetailReport] Unexpected error in function execution:', error);
+              return { success: false, message: `Unexpected Error: ${error.message}`, data: [] };
+          }
+      },
+
+
+  //export
+  async getAllItemsForExport() {
+      if (!supabase) {
+        return Promise.reject(new Error("Supabase client not initialized."));
+      }
+      try {
+        // This query will fetch each item for each location it exists in,
+        // along with its quantity at that location.
+        const { data, error } = await supabase
+          .from('item_location_quantities') // Start from the junction table
+          .select(`
+            quantity,
+            item:items!inner (
+              id, sku, name, variant, description, category, cost_price, status, is_archived, low_stock_threshold, created_at, updated_at
+            ),
+            location:storage_locations!inner (
+              id, name, description, is_active
+            )
+          `)
+          // Optionally, filter out archived items or inactive locations if needed for this export
+          // .eq('item.is_archived', false)
+          // .eq('location.is_active', true)
+          .order('name', { foreignTable: 'items', ascending: true })
+          .order('name', { foreignTable: 'location', ascending: true });
+
+        if (error) {
+          console.error("[db.getAllItemsForExport] Supabase error:", error);
+          throw error;
+        }
+
+        // Transform the data into a flatter structure suitable for CSV/XLSX
+        // Each row in the export will represent an item at a specific location.
+        const flatData = (data || []).map(record => ({
+          item_id: record.item.id,
+          sku: record.item.sku,
+          item_name: record.item.name,
+          variant: record.item.variant,
+          description: record.item.description,
+          category: record.item.category,
+          cost_price: record.item.cost_price,
+          item_status: record.item.status, // Renamed to avoid conflict with location status if any
+          is_archived: record.item.is_archived,
+          low_stock_threshold: record.item.low_stock_threshold,
+          item_created_at: record.item.created_at,
+          item_updated_at: record.item.updated_at,
+          location_id: record.location.id,
+          location_name: record.location.name,
+          location_description: record.location.description,
+          location_is_active: record.location.is_active,
+          quantity_at_location: record.quantity
+        }));
+
+        console.log(`[db.getAllItemsForExport] Fetched and transformed ${flatData.length} item-location records for export.`);
+        return flatData; // Ensure an array is always returned
+
+      } catch (error) {
+        console.error("[db.getAllItemsForExport] Error fetching items for export:", error);
+        throw error; // Re-throw to be caught by the caller in main.js
+      }
+    },
+    async getInventoryValuationReportData(filters = {}) {
+            if (!supabase) return { success: false, message: "DB client not init.", data: [] };
+            try {
+                const { data, error } = await supabase.rpc('get_inventory_valuation_report', {
+                    p_category: filters.category || null,
+                    p_location_id: filters.locationId || null
+                });
+                if (error) throw error;
+                return { success: true, data: data || [] };
+            } catch (error) {
+                console.error('[db.getInventoryValuationReportData] Error:', error);
+                return { success: false, message: error.message, data: [] };
+            }
+        },
+
+        async getSalesPerformanceReportData(period = 'last30days', topItemsLimit = 10) {
+            if (!supabase) return { success: false, message: "DB client not init.", data: {} };
+            try {
+                const { startDate, endDate } = getDateRange(period);
+
+                const [summaryRes, topItemsRes, byCategoryRes] = await Promise.all([
+                    supabase.rpc('get_sales_summary_kpis', {
+                        start_date_param: startDate,
+                        end_date_param: endDate
+                    }),
+                    supabase.rpc('get_top_selling_products_for_report', { // Use the new/updated RPC
+                        start_date_param: startDate,
+                        end_date_param: endDate,
+                        result_limit: topItemsLimit
+                    }),
+                    supabase.rpc('get_item_sales_by_category_for_period', {
+                        start_date_param: startDate,
+                        end_date_param: endDate
+                    })
+                ]);
+
+                if (summaryRes.error) throw new Error(`Sales Summary KPIs Error: ${summaryRes.error.message}`);
+                if (topItemsRes.error) throw new Error(`Top Selling Items Error: ${topItemsRes.error.message}`);
+                if (byCategoryRes.error) throw new Error(`Sales By Category Error: ${byCategoryRes.error.message}`);
+
+                return {
+                    success: true,
+                    data: {
+                        summary: (summaryRes.data && summaryRes.data[0]) ? summaryRes.data[0] : { total_sales_value: 0, number_of_orders: 0, average_order_value: 0, total_items_sold: 0 },
+                        topItems: topItemsRes.data || [],
+                        salesByCategory: byCategoryRes.data || []
+                    }
+                };
+            } catch (error) {
+                console.error('[db.getSalesPerformanceReportData] Error:', error);
+                return { success: false, message: error.message, data: {} };
+            }
+        },
+
+
 
   // ... (rest of your db object)
 

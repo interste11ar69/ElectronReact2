@@ -214,19 +214,23 @@ export const db = {
   },
 
   async checkSkuExists(sku) {
-      if (!supabase || !sku) {
-        // console.warn("[db.checkSkuExists] Supabase client not init or no SKU provided.");
-        return { exists: false, item: null, error: "SKU not provided for check." };
+      if (!supabase) return { exists: false, item: null, error: "Database client not initialized." };
+
+      const normalizedSku = sku ? String(sku).trim().toUpperCase() : ""; // Normalize: Trim and Uppercase
+
+      if (normalizedSku === "") {
+        return { exists: false, item: null, error: "SKU cannot be empty for check." };
       }
+
       try {
         const { data, error, count } = await supabase
           .from('items')
-          .select('id, name, sku, is_archived', { count: 'exact' }) // Fetch a bit more info if needed
-          .eq('sku', sku)
-          .limit(1); // We only need to know if at least one exists
+          .select('id, name, sku, is_archived', { count: 'exact' })
+          .eq('sku', normalizedSku) // Compare against the normalized SKU
+          .limit(1);
 
         if (error) {
-          console.error(`[db.checkSkuExists] Error checking SKU ${sku}:`, error);
+          console.error(`[db.checkSkuExists] Error checking SKU "${normalizedSku}":`, error);
           return { exists: false, item: null, error: error.message };
         }
 
@@ -234,76 +238,103 @@ export const db = {
         return { exists: itemExists, item: itemExists ? data[0] : null, error: null };
 
       } catch (e) {
-        console.error(`[db.checkSkuExists] Exception checking SKU ${sku}:`, e);
+        console.error(`[db.checkSkuExists] Exception checking SKU "${normalizedSku}":`, e);
         return { exists: false, item: null, error: e.message };
       }
     },
 
-  async createItem(itemPayload, initialStockEntries = [], createdByUserId, createdByUsername) {
-      // itemPayload: { itemData: {name, sku, ...}, initialStockEntries: [{locationId, quantity, locationName}, ...] }
+    async createItem(itemPayload, initialStockEntries = [], createdByUserId, createdByUsername) {
       if (!supabase) return { success: false, message: "Database client not initialized." };
 
       const { itemData } = itemPayload;
 
-      // --- SERVER-SIDE SKU DUPLICATION CHECK ---
-      if (itemData.sku && itemData.sku.trim() !== "") {
-        const skuCheck = await this.checkSkuExists(itemData.sku.trim());
-        if (skuCheck.exists) {
-          let message = `SKU "${itemData.sku.trim()}" already exists for item "${skuCheck.item.name}".`;
-          if (skuCheck.item.is_archived) {
-            message += " The existing item is currently archived.";
+      // Normalize SKU for checking and saving
+      const normalizedSku = itemData.sku ? String(itemData.sku).trim().toUpperCase() : null;
+
+      // --- SERVER-SIDE SKU VALIDATION & DUPLICATION CHECK ---
+      if (!normalizedSku || normalizedSku === "") { // If SKU is intended to be required
+          // If SKU is optional and empty, skip uniqueness check.
+          // If SKU is mandatory, this check should be active:
+          // return { success: false, message: "SKU is required to create an item." };
+      } else { // If SKU is provided, check for uniqueness
+          const skuCheck = await this.checkSkuExists(normalizedSku); // checkSkuExists uses normalized SKU
+          if (skuCheck.exists) {
+              let message = `SKU "${normalizedSku}" already exists for item "${skuCheck.item.name}".`;
+              if (skuCheck.item.is_archived) {
+                  message += " The existing item is currently archived.";
+              }
+              return { success: false, message: message, isDuplicateSku: true, existingItem: skuCheck.item };
           }
-          return { success: false, message: message, isDuplicateSku: true, existingItem: skuCheck.item };
-        }
-        if (skuCheck.error) { // Handle error during SKU check
-          return { success: false, message: `Error checking SKU: ${skuCheck.error}`, isDuplicateSku: false };
-        }
+          if (skuCheck.error && !skuCheck.exists) { // Error during check, but not a duplicate finding
+              return { success: false, message: `Error checking SKU: ${skuCheck.error}`, isDuplicateSku: false };
+          }
       }
-      // --- END SERVER-SIDE SKU DUPLICATION CHECK ---
+      // --- END SERVER-SIDE SKU VALIDATION & DUPLICATION CHECK ---
 
       const itemRecordToInsert = {
-        name: itemData.name,
-        sku: itemData.sku ? itemData.sku.trim() : null,
-        description: itemData.description || null,
+        name: String(itemData.name).trim(), // Trim name
+        sku: normalizedSku, // Save the normalized SKU (can be null if optional)
+        description: itemData.description ? String(itemData.description).trim() : null,
         cost_price: parseFloat(itemData.cost_price) || 0,
         category: itemData.category || "Uncategorized",
-        variant: itemData.variant || null,
+        variant: itemData.variant ? String(itemData.variant).trim() : null,
         status: itemData.status || "Normal",
-        is_archived: false,
+        is_archived: false, // New items are active
+        // low_stock_threshold will use DB default if not provided by itemData
+        low_stock_threshold: itemData.low_stock_threshold !== undefined ? parseInt(itemData.low_stock_threshold, 10) : null,
       };
+
       let newItem;
       try {
-        const { data, error: itemInsertError } = await supabase.from("items").insert([itemRecordToInsert]).select().single();
-        if (itemInsertError) { // This will catch the DB unique constraint violation too
-          if (itemInsertError.code === '23505') { // PostgreSQL unique violation code
-               return { success: false, message: `SKU "${itemData.sku.trim()}" already exists. Please use a unique SKU.`, isDuplicateSku: true };
+        const { data, error: itemInsertError } = await supabase
+          .from("items")
+          .insert([itemRecordToInsert])
+          .select()
+          .single();
+
+        if (itemInsertError) {
+          // This will catch the DB unique constraint violation if the above check somehow missed it
+          // or if there's a race condition (very unlikely in typical Electron app usage).
+          if (itemInsertError.code === '23505' && normalizedSku) { // PostgreSQL unique violation code
+               return { success: false, message: `SKU "${normalizedSku}" already exists. Please use a unique SKU.`, isDuplicateSku: true };
           }
+          console.error("[db.createItem] Supabase insert error:", itemInsertError);
           throw itemInsertError;
         }
-        if (!data) throw new Error("Item master record creation failed to return data.");
+        if (!data) {
+          throw new Error("Item master record creation failed to return data.");
+        }
         newItem = data;
+
         if (initialStockEntries && Array.isArray(initialStockEntries) && initialStockEntries.length > 0) {
           for (const stockEntry of initialStockEntries) {
-            if (stockEntry.locationId && Number(stockEntry.quantity) >= 0) { // Allow 0 initial stock
+            if (stockEntry.locationId && stockEntry.quantity !== '' && Number(stockEntry.quantity) >= 0) { // Allow 0 initial stock
               const transactionDetails = {
                 transactionType: "INITIAL_STOCK_ENTRY",
                 referenceId: String(newItem.id),
                 referenceType: "NEW_ITEM_CREATION",
                 userId: createdByUserId,
                 usernameSnapshot: createdByUsername,
-                notes: `Initial stock for new item "${newItem.name}" at location ID ${stockEntry.locationId}${stockEntry.locationName ? ` (${stockEntry.locationName})` : ""}.`,
+                notes: `Initial stock for new item "${newItem.name}" (SKU: ${newItem.sku || 'N/A'}) at location ID ${stockEntry.locationId}${stockEntry.locationName ? ` (${stockEntry.locationName})` : ""}. Qty: ${Number(stockEntry.quantity)}`,
               };
               const adjustmentResult = await db.adjustStockQuantity(newItem.id, stockEntry.locationId, Number(stockEntry.quantity), transactionDetails);
               if (!adjustmentResult.success) {
                 console.error(`[db.createItem] Failed to add initial stock for item ${newItem.id} at location ${stockEntry.locationId}: ${adjustmentResult.message}`);
+                // Optionally, collect these errors to return to the user or log more prominently
               }
             }
           }
         }
-        return { success: true, item: newItem, message: "Item created successfully." }; // Removed "with initial stock" for brevity
+        return { success: true, item: newItem, message: "Item created successfully." };
       } catch (error) {
         console.error("Error in createItem process:", error);
-        return { success: false, message: error.message || "Failed to create item.", isDuplicateSku: error.code === '23505' };
+        // Check if the error is due to unique SKU constraint from the database
+        const isDbDuplicateSkuError = error.code === '23505' && normalizedSku;
+        return {
+            success: false,
+            message: isDbDuplicateSkuError ? `SKU "${normalizedSku}" already exists (DB constraint).` : (error.message || "Failed to create item."),
+            isDuplicateSku: isDbDuplicateSkuError
+        };
       }
     },
 

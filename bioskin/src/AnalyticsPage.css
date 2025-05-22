@@ -24,30 +24,6 @@
   flex-grow: 1; /* Allows title to take up available space */
 }
 
-/* --- Sales Period Filter (Top Right) --- */
-.sales-period-filter {
-  display: flex;
-  align-items: center;
-  flex-shrink: 0; /* Prevents this group from shrinking too much */
-}
-
-.sales-period-filter label {
-  margin-right: 0.75rem;
-  font-weight: 500;
-  color: var(--color-text-medium);
-  white-space: nowrap; /* Keeps "Sales Period:" on one line */
-}
-
-.sales-period-filter select {
-  padding: 0.6rem 0.8rem;
-  border-radius: var(--border-radius);
-  border: 1px solid var(--color-border-strong);
-  background-color: var(--color-surface);
-  min-width: 160px;
-  font-size: 0.9em;
-  color: var(--color-text-dark);
-}
-
 /* --- Section Styling (Cards) --- */
 .analytics-section {
   background-color: var(--color-surface, #fff);
@@ -103,7 +79,8 @@
 /* --- Charts --- */
 .charts-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 400px), 1fr)); /* Min 400px, or 100% if container is smaller */
+  /* Adjusted to reflect only 2 charts remaining, or make it more generic if you add more non-sales charts */
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 350px), 1fr)); /* Min 350px, or 100% if container is smaller */
   gap: 2rem;
   margin-bottom: 2rem;
 }
@@ -135,16 +112,17 @@
   min-height: 300px; /* Ensure charts have some base height */
 }
 
-.top-items-chart-wrapper { /* Specific for Top Selling Items bar chart */
-  min-height: 300px; /* Base height, JS might override for dynamic height */
+/* --- Top Selling Items Chart Wrapper - REMOVED --- */
+/*
+.top-items-chart-wrapper {
+  min-height: 300px;
 }
+*/
 
 /* --- Low Stock Items List Section --- */
 .low-stock-section {
   /* Uses .analytics-section styles by default if class is applied */
 }
-
-/* .low-stock-section h2: Already covered by .analytics-section h2 */
 
 .low-stock-list-container {
   max-height: 400px;
@@ -192,46 +170,46 @@
 }
 
 /* --- Filter Bar for Detailed Reports --- */
+/* This is for the Detailed Stock Report, which is kept */
 .analytics-page .filters-bar {
   display: flex;
-  gap: 1rem; /* Space between filter elements */
+  gap: 1rem;
   margin-bottom: 1.5rem;
-  align-items: center; /* Vertically align items */
-  flex-wrap: wrap; /* Allow filters to wrap on smaller screens */
+  align-items: center;
+  flex-wrap: wrap;
 }
 
-.analytics-page .filters-bar .react-select-container { /* Target react-select wrapper */
-  flex: 1; /* Allow select boxes to grow */
-  min-width: 200px; /* Minimum width for select boxes */
-  /* z-index needs to be managed in JS styles prop for react-select if they overlap */
+.analytics-page .filters-bar .react-select-container {
+  flex: 1;
+  min-width: 200px;
 }
 
-.analytics-page .filters-bar label { /* For checkbox labels within the filter bar */
-  margin-bottom: 0; /* Align with select boxes */
+.analytics-page .filters-bar label {
+  margin-bottom: 0;
   display: flex;
   align-items: center;
   font-size: 0.9em;
   color: var(--color-text-medium);
-  white-space: nowrap; /* Prevent label text from wrapping */
+  white-space: nowrap;
 }
 
 .analytics-page .filters-bar input[type="checkbox"] {
-  width: auto; /* Override global styles if input[type=checkbox] is set to width: 100% */
-  margin-right: 0.5rem; /* Space between checkbox and its label text */
-  /* Consider custom styling for checkbox appearance if needed */
+  width: auto;
+  margin-right: 0.5rem;
   height: 16px;
   width: 16px;
-  vertical-align: middle; /* Better alignment with text */
+  vertical-align: middle;
 }
 
 
 /* --- Table Styling for Detailed Reports --- */
+/* This is for the Detailed Stock Report, which is kept */
 .analytics-page .table-container {
-  max-height: 500px; /* Or your desired height for scrollable tables */
+  max-height: 500px;
   overflow-y: auto;
-  border: 1px solid var(--color-border-soft, #eee); /* Consistent border */
-  border-radius: var(--border-radius, 6px); /* Consistent radius */
-  margin-top: 1rem; /* Space above the table if it follows filters directly */
+  border: 1px solid var(--color-border-soft, #eee);
+  border-radius: var(--border-radius, 6px);
+  margin-top: 1rem;
 }
 
 .analytics-page .table {
@@ -241,62 +219,57 @@
 
 .analytics-page .table th,
 .analytics-page .table td {
-  border-bottom: 1px solid var(--color-border-extra-soft, #f1f3f5); /* Softer internal borders */
-  padding: 0.75rem 0.9rem; /* Adjust padding for readability */
+  border-bottom: 1px solid var(--color-border-extra-soft, #f1f3f5);
+  padding: 0.75rem 0.9rem;
   text-align: left;
-  font-size: 0.9em; /* Consistent font size for table data */
+  font-size: 0.9em;
   vertical-align: middle;
 }
-/* Optional: Remove border from last cell in a row if desired
-.analytics-page .table td:last-child,
-.analytics-page .table th:last-child {
-    border-right: none;
-}
-*/
 
 .analytics-page .table thead th {
-  background-color: var(--color-surface-alt, #f8f9fa); /* Light background for headers */
+  background-color: var(--color-surface-alt, #f8f9fa);
   font-weight: 600;
   color: var(--color-text-dark);
-  position: sticky; /* Make table headers sticky within the scrollable .table-container */
+  position: sticky;
   top: 0;
-  z-index: 10; /* Ensure headers stay above scrolling content and other elements like react-select dropdowns */
-  border-bottom-width: 2px; /* Stronger bottom border for header */
+  z-index: 10;
+  border-bottom-width: 2px;
   border-bottom-color: var(--color-border-strong, #ccc);
 }
 
 .analytics-page .table tbody tr:hover {
-  background-color: var(--color-table-row-hover, #f1f3f5); /* Use your theme's hover color */
+  background-color: var(--color-table-row-hover, #f1f3f5);
 }
 
-.analytics-page .table .text-right { /* Utility class for text alignment */
+.analytics-page .table .text-right {
   text-align: right !important;
 }
 
 /* --- Small Export Buttons --- */
+/* Kept, as Detailed Stock Report has export buttons */
 .analytics-page .button-small {
     padding: 0.4rem 0.8rem;
     font-size: 0.85em;
-    line-height: 1.4; /* Ensure text is vertically centered */
-    margin-left: 0.5rem; /* Space between buttons if they are next to each other */
+    line-height: 1.4;
+    margin-left: 0.5rem;
 }
-.analytics-page .button-small:disabled { /* Style for disabled export buttons */
+.analytics-page .button-small:disabled {
     opacity: 0.5;
     cursor: not-allowed;
 }
 
 
 /* --- General Messages & Loaders --- */
-.no-data-message { /* This is your existing style, ensure it's well-placed */
+.no-data-message {
   text-align: center;
   padding: 3rem 1rem;
   color: var(--color-text-light);
   font-style: italic;
-  flex-grow: 1; /* If inside a flex container */
+  flex-grow: 1;
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 150px; /* Give it some space */
+  min-height: 150px;
 }
 
 .analytics-loading,
@@ -304,38 +277,37 @@
   text-align: center;
   padding: 3rem 1rem;
   font-size: 1.1em;
-  /* .card class from index.css will provide background, border, etc. */
 }
 
 .analytics-error.card {
   color: var(--color-status-danger);
-  /* border-color: var(--color-status-danger) !important; */ /* Optional: make border red too */
 }
 
-/* --- Notification Styling (New) --- */
+/* --- Notification Styling --- */
+/* Kept, as it's general purpose for export feedback etc. */
 .analytics-page .notification {
     padding: 1rem;
     margin-bottom: 1.5rem;
     border-radius: var(--border-radius);
-    color: white; /* Default text color for notifications, can be overridden */
+    color: white;
     font-weight: 500;
     border-left-width: 5px;
     border-left-style: solid;
 }
 .analytics-page .notification-success {
     background-color: var(--color-status-success, #4CAF50);
-    border-left-color: #388E3C; /* Darker shade of success */
+    border-left-color: #388E3C;
 }
 .analytics-page .notification-error {
     background-color: var(--color-status-danger, #F44336);
-    border-left-color: #D32F2F; /* Darker shade of danger */
+    border-left-color: #D32F2F;
 }
 .analytics-page .notification-warn {
     background-color: var(--color-status-warning, #FF9800);
-    color: var(--color-text-dark); /* Warning often has dark text for readability */
-    border-left-color: #F57C00; /* Darker shade of warning */
+    color: var(--color-text-dark);
+    border-left-color: #F57C00;
 }
 .analytics-page .notification-info {
-    background-color: var(--color-accent-secondary, #2196F3); /* Using accent-secondary for info */
-    border-left-color: #1976D2; /* Darker shade of info */
+    background-color: var(--color-accent-secondary, #2196F3);
+    border-left-color: #1976D2;
 }

@@ -8,8 +8,6 @@ import Layout from './Layout';
 import DashboardPage from './DashboardPage';
 import ItemManagementPage from './ItemManagementPage';
 import ProductFormPage from './ProductFormPage';
-import SalesOrderListPage from './SalesOrderListPage';
-import SalesOrderFormPage from './SalesOrderFormPage';
 import AnalyticsPage from './AnalyticsPage';
 import BulkUpdatePage from './BulkUpdatePage';
 import InitialImportPage from './InitialImportPage';

@@ -5,10 +5,10 @@ import {
     FaFileUpload,   // For Import
     FaPenSquare,    // For Bulk Update
     FaUsers,        // For Customers
-    FaFileExport,   // Generic Export
+    // FaFileExport,   // Generic Export - Not explicitly used as icon, FaBoxes/FaUsers are more specific
     FaFileImport,   // Generic Import
     FaBoxes,        // For Inventory
-    FaFileInvoiceDollar // For Sales Orders
+    // FaFileInvoiceDollar // REMOVED - Was for Sales Orders
 } from 'react-icons/fa';
 import './DataManagementPage.css';
 
@@ -85,7 +85,7 @@ function DataManagementPage() {
             title: 'Export Comprehensive Inventory',
             description: 'Download a CSV of all items, their quantities, and locations.',
             action: () => handleGenericExport('comprehensive_inventory', 'comprehensive_inventory_export', 'Comprehensive Inventory'),
-            icon: <FaBoxes />, // Changed icon
+            icon: <FaBoxes />,
             buttonText: isProcessing ? 'Processing...' : 'Export Inventory Data',
             type: 'action',
             disabled: isProcessing,
@@ -99,25 +99,7 @@ function DataManagementPage() {
             type: 'action',
             disabled: isProcessing,
         },
-        {
-            title: 'Export Sales Orders',
-            description: 'Download a CSV of all sales order headers and key details.',
-            action: () => handleGenericExport('sales_orders', 'sales_orders_export', 'Sales Orders'),
-            icon: <FaFileInvoiceDollar />,
-            buttonText: isProcessing ? 'Processing...' : 'Export Sales Orders',
-            type: 'action',
-            disabled: isProcessing,
-        },
-        // --- Future Placeholder for Import ---
-        // {
-        //     title: 'Customer Data Import (Future)',
-        //     description: 'Upload a file to add multiple new customers to the system.',
-        //     path: '/data-management/customer-import', // Example new path
-        //     icon: <FaUsers />,
-        //     buttonText: 'Import Customers',
-        //     type: 'navigation',
-        //     disabled: true, // Keep disabled until implemented
-        // },
+
     ];
 
     return (
@@ -130,12 +112,12 @@ function DataManagementPage() {
             </header>
 
             {feedbackMessage && (
-                <div className="card notification notification-success" role="alert"> {/* Assuming global notification styles */}
+                <div className="card notification notification-success" role="alert">
                     {feedbackMessage}
                 </div>
             )}
             {feedbackError && (
-                <div className="card notification notification-error" role="alert"> {/* Assuming global notification styles */}
+                <div className="card notification notification-error" role="alert">
                     Error: {feedbackError}
                 </div>
             )}

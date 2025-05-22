@@ -29,7 +29,7 @@ contextBridge.exposeInMainWorld(
       console.log('[Preload] Invoking "get-item-by-id" with ID:', id);
       return ipcRenderer.invoke('get-item-by-id', id);
     },
-    createItem: (itemPayload) => { // itemPayload is { itemData, initialStockEntries }
+    createItem: (itemPayload) => {
       console.log('[Preload] Invoking "create-item" with payload:', itemPayload);
       return ipcRenderer.invoke('create-item', itemPayload);
     },
@@ -37,9 +37,10 @@ contextBridge.exposeInMainWorld(
       console.log('[Preload] Invoking "update-item" with data:', itemDataWithId);
       return ipcRenderer.invoke('update-item', itemDataWithId);
     },
-    archiveItem: (itemId) => { // Renamed from deleteItem for clarity if it's soft delete
+    archiveItem: (itemId) => {
       console.log('[Preload] Invoking "archive-item" with ID:', itemId);
-      return ipcRenderer.invoke('delete-item', itemId); // Main process still uses 'delete-item' for archive
+      // Assuming main.js 'delete-item' handler is now for archiving items
+      return ipcRenderer.invoke('delete-item', itemId);
     },
     unarchiveItem: (itemId) => {
       console.log('[Preload] Invoking "unarchive-item" for ID:', itemId);
@@ -63,12 +64,11 @@ contextBridge.exposeInMainWorld(
       console.log('[Preload] Invoking "update-customer" with data:', customerDataWithId);
       return ipcRenderer.invoke('update-customer', customerDataWithId);
     },
-    deleteCustomer: (id) => {
-      console.log('[Preload] Invoking "delete-customer" with ID:', id);
-      return ipcRenderer.invoke('delete-customer', id);
+    archiveCustomer: (customerId, archiveStatus) => { // New function exposed
+      console.log(`[Preload] Invoking "archive-customer" for ID: ${customerId}, Status: ${archiveStatus}`);
+      return ipcRenderer.invoke('archive-customer', customerId, archiveStatus);
     },
 
-    // --- Bundle Management ---
     createBundle: (bundleData) => {
       console.log('[Preload] Invoking "create-bundle" with data:', bundleData);
       return ipcRenderer.invoke('create-bundle', bundleData);
@@ -85,39 +85,12 @@ contextBridge.exposeInMainWorld(
       console.log('[Preload] Invoking "update-bundle" for ID:', bundleId, 'with data:', bundleData);
       return ipcRenderer.invoke('update-bundle', bundleId, bundleData);
     },
-    deleteBundle: (id) => {
-      console.log('[Preload] Invoking "delete-bundle" for ID:', id);
-      return ipcRenderer.invoke('delete-bundle', id);
-    },
-    processBundleSale: (args) => { // args is { bundleId, quantitySold }
-      console.log('[Preload] Invoking "process-bundle-sale" with args:', args);
-      return ipcRenderer.invoke('process-bundle-sale', args);
-    },
+    archiveBundle: (bundleId, archiveStatus) => { // New function exposed
+          console.log(`[Preload] Invoking "archive-bundle" for ID: ${bundleId}, Status: ${archiveStatus}`);
+          return ipcRenderer.invoke('archive-bundle', bundleId, archiveStatus);
+        },
 
-    // --- Sales Order Management ---
-    createSalesOrder: (orderPayload, orderItemsPayload) => {
-      console.log('[Preload] Invoking "create-sales-order" with orderPayload:', orderPayload, 'and orderItemsPayload:', orderItemsPayload);
-      // Main.js expects an object like { orderData: ..., orderItemsData: ... }
-      return ipcRenderer.invoke('create-sales-order', { orderData: orderPayload, orderItemsData: orderItemsPayload });
-    },
-    getSalesOrders: (filters) => {
-      console.log('[Preload] Invoking "get-sales-orders" with filters:', filters);
-      return ipcRenderer.invoke('get-sales-orders', filters);
-    },
-    getSalesOrderById: (orderId) => {
-      console.log('[Preload] Invoking "get-sales-order-by-id" for Order ID:', orderId);
-      return ipcRenderer.invoke('get-sales-order-by-id', orderId);
-    },
-    updateSalesOrderStatus: (orderId, newStatus) => { // Frontend sends two args
-      console.log(`[Preload] Invoking "update-sales-order-status" for Order ID: ${orderId} to Status: ${newStatus}`);
-      return ipcRenderer.invoke('update-sales-order-status', { orderId, newStatus }); // Package as object for main
-    },
-    generateOrderNumber: () => {
-      console.log('[Preload] Invoking "generate-order-number"');
-      return ipcRenderer.invoke('generate-order-number');
-    },
-
-    // --- Returns Processing ---
+    // --- Returns Processing (Kept) ---
     processReturn: (returnDetails) => {
       console.log('[Preload] Invoking "process-return" with details:', returnDetails);
       return ipcRenderer.invoke('process-return', returnDetails);
@@ -127,7 +100,7 @@ contextBridge.exposeInMainWorld(
       return ipcRenderer.invoke('get-returns', filters);
     },
 
-    // --- Stock Operations ---
+    // --- Stock Operations (Kept) ---
     performStockAdjustment: (details) => {
       console.log('[Preload] Invoking "perform-stock-adjustment" with details:', details);
       return ipcRenderer.invoke('perform-stock-adjustment', details);
@@ -157,7 +130,7 @@ contextBridge.exposeInMainWorld(
       return ipcRenderer.invoke('get-store-location-id');
     },
 
-    // --- Analytics & Reporting Data Fetching ---
+    // --- Analytics & Reporting Data Fetching (Inventory Focused) ---
     getInventorySummary: () => {
       console.log('[Preload] Invoking "get-inventory-summary"');
       return ipcRenderer.invoke('get-inventory-summary');
@@ -174,57 +147,29 @@ contextBridge.exposeInMainWorld(
       console.log('[Preload] Invoking "get-inventory-by-storage"');
       return ipcRenderer.invoke('get-inventory-by-storage');
     },
-    getTodaysSalesTotal: () => {
-      console.log('[Preload] Invoking "get-todays-sales-total"');
-      return ipcRenderer.invoke('get-todays-sales-total');
-    },
-    getNewOrdersCount: () => {
-      console.log('[Preload] Invoking "get-new-orders-count"');
-      return ipcRenderer.invoke('get-new-orders-count');
-    },
-    getSalesSummary: (period) => { // Used by AnalyticsPage
-      console.log('[Preload] Invoking "get-sales-summary" with period:', period);
-      return ipcRenderer.invoke('get-sales-summary', period);
-    },
-    getTopSellingItems: (params) => { // params is { period, limit }, used by AnalyticsPage
-      console.log('[Preload] Invoking "get-top-selling-items" with params:', params);
-      return ipcRenderer.invoke('get-top-selling-items', params);
-    },
-    getSalesByStatus: (period) => { // Used by AnalyticsPage
-      console.log('[Preload] Invoking "get-sales-by-status" with period:', period);
-      return ipcRenderer.invoke('get-sales-by-status', period);
-    },
-    getDetailedStockReport: (filters) => { // Used by AnalyticsPage
+
+    getDetailedStockReport: (filters) => { // Kept for inventory analytics
       console.log('[Preload] Invoking "get-detailed-stock-report" with filters:', filters);
       return ipcRenderer.invoke('get-detailed-stock-report', filters);
     },
-    getSalesDetailReport: (filters) => { // Used by AnalyticsPage
-      console.log('[Preload] Invoking "get-sales-detail-report" with filters:', filters);
-      return ipcRenderer.invoke('get-sales-detail-report', filters);
-    },
-    generateReport: (params) => { // Used by new ReportsPage.js; params is { reportType, filters }
+    generateReport: (params) => { // Kept, assuming it can generate non-sales reports
         console.log('[Preload] Invoking "generate-report" with params:', params);
         return ipcRenderer.invoke('generate-report', params);
     },
 
-
     // --- Data Management (File Operations) ---
-    importInitialItems: (args) => { // args is { fileData }
+    importInitialItems: (args) => {
       console.log('[Preload] Invoking "import-initial-items" with args:', args);
       return ipcRenderer.invoke('import-initial-items', args);
     },
-    processInventoryFile: (args) => { // args is { fileData, actionType, columnMapping }
+    processInventoryFile: (args) => {
       console.log('[Preload] Invoking "process-inventory-file" with args:', args);
       return ipcRenderer.invoke('process-inventory-file', args);
     },
-    exportGenericData: (params) => { // Used by DataManagementPage & AnalyticsPage/ReportsPage; params: { exportType?, reportData?, format?, fileNamePrefix }
+    exportGenericData: (params) => {
         console.log('[Preload] Invoking "export-generic-data" with params:', params);
         return ipcRenderer.invoke('export-generic-data', params);
     },
-    // Note: The old 'exportInventory' can be removed if 'exportGenericData' with type 'comprehensive_inventory' replaces it.
-    // If you keep both, ensure they call different or appropriately parameterized IPC handlers in main.js.
-    // For simplicity, I'm assuming 'exportGenericData' will be the primary export mechanism.
-
 
     // --- Activity Log ---
     getActivityLog: () => {
@@ -242,7 +187,6 @@ contextBridge.exposeInMainWorld(
         console.log('[preload.js] Listener removed for "new-log-entry"');
       };
     }
-    // No comma after the last property in the object
   }
 );
 

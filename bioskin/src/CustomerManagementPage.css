@@ -186,3 +186,15 @@
    padding: calc(var(--spacing-unit) * 2) calc(var(--spacing-unit) * 3.5);
    font-weight: 500;
 }
+/* In index.css or a relevant CSS file */
+.button-action.button-unarchive {
+    background-color: transparent;
+    border: 1px solid var(--color-status-success);
+    color: var(--color-status-success);
+    /* Add other styles from button-edit if needed: padding, font-size, margin */
+}
+.button-action.button-unarchive:hover {
+    background-color: var(--color-status-success);
+    color: white;
+    opacity: 1;
+}

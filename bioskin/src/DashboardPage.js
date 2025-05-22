@@ -2,8 +2,8 @@
 import React, { useState, useEffect } from 'react';
 import './DashboardPage.css';
 import {
-    FaBell, FaUserCircle, FaPumpSoap, FaClipboardList, FaArrowDown, FaUndo
-} from 'react-icons/fa'; // FaDollarSign might be implicitly used by formatCurrency
+    FaBell, FaUserCircle, FaPumpSoap, FaArrowDown, FaUndo
+} from 'react-icons/fa';
 import { Bar } from 'react-chartjs-2';
 import {
   Chart as ChartJS, CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend, Filler
@@ -15,9 +15,11 @@ ChartJS.register(
   Title, Tooltip, Legend, Filler
 );
 
-const formatCurrency = (value, currency = 'PHP') => {
-  return new Intl.NumberFormat('en-PH', { style: 'currency', currency: currency, minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(value || 0);
-};
+// formatCurrency is not used in this file anymore after sales removal.
+// You can remove it if it's not planned for other uses here.
+// const formatCurrency = (value, currency = 'PHP') => {
+//   return new Intl.NumberFormat('en-PH', { style: 'currency', currency: currency, minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(value || 0);
+// };
 
 function DashboardPage({ currentUser }) {
   const [totalProducts, setTotalProducts] = useState(0);
@@ -40,18 +42,11 @@ function DashboardPage({ currentUser }) {
     const fetchDashboardStats = async () => {
       setIsLoadingStats(true);
       setStatsError(null);
-      console.log("Dashboard: Fetching all dashboard stats (multi-location aware)...");
+      // console.log("Dashboard: Fetching all dashboard stats...");
       try {
-        // Get today's date in YYYY-MM-DD format
-        const today = new Date();
-        const yyyy = today.getFullYear();
-        const mm = String(today.getMonth() + 1).padStart(2, '0');
-        const dd = String(today.getDate()).padStart(2, '0');
-        const todayStr = `${yyyy}-${mm}-${dd}`;
-
         const [summaryRes, lowStockRes, returnsRes] = await Promise.all([
           window.electronAPI.getInventorySummary(),
-          window.electronAPI.getLowStockItems(),
+          window.electronAPI.getLowStockItems(), // Fetches items where qty < threshold at STORE
           window.electronAPI.getReturns()
         ]);
 
@@ -63,30 +58,47 @@ function DashboardPage({ currentUser }) {
             throw new Error(summaryRes.message || 'Failed to load total products');
         }
 
-        // The accuracy of lowStockCount depends on what lowStockRes.items.length is
         if (lowStockRes.success && Array.isArray(lowStockRes.items)) {
             setLowStockCount(lowStockRes.items.length || 0);
         } else {
             throw new Error(lowStockRes.message || 'Failed to load low stock count');
         }
 
-// Filter returnsRes for today's date
         let todaysCount = 0;
         if (Array.isArray(returnsRes)) {
-          const today = new Date();
-          const yyyy = today.getFullYear();
-          const mm = today.getMonth();
-          const dd = today.getDate();
+          const now = new Date(); // Current date and time in client's local timezone (PHT)
+          const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+          const startOfTomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 0, 0);
+
+          // console.log(`[Dashboard] Client's Start of Today (Local): ${startOfToday.toString()}`);
+          // console.log(`[Dashboard] Client's Start of Tomorrow (Local): ${startOfTomorrow.toString()}`);
+          // console.log("[Dashboard] Raw returnsRes from API:", JSON.stringify(returnsRes.slice(0, 5)));
+
+
           const todayOnly = returnsRes.filter(ret => {
-            if (!ret || !ret.return_date) return false;
-            const retDate = new Date(ret.return_date);
-            return (
-              retDate.getFullYear() === yyyy &&
-              retDate.getMonth() === mm &&
-              retDate.getDate() === dd
-            );
+            // Assuming ret.return_date is the alias for ret.created_at from the DB (a UTC string)
+            if (!ret || !ret.return_date) {
+                // console.warn("[Dashboard] Filtering: Skipping return due to missing object or return_date:", ret);
+                return false;
+            }
+            try {
+                const returnTimestamp = new Date(ret.return_date); // Parses UTC string
+
+                // console.log(`[Dashboard] Return ID: ${ret.id}, Raw return_date: ${ret.return_date}, Parsed returnTimestamp (Local): ${returnTimestamp.toString()}`);
+                // console.log(`[Dashboard] Is returnTimestamp >= startOfToday? ${returnTimestamp.getTime() >= startOfToday.getTime()}`);
+                // console.log(`[Dashboard] Is returnTimestamp < startOfTomorrow? ${returnTimestamp.getTime() < startOfTomorrow.getTime()}`);
+
+                return returnTimestamp.getTime() >= startOfToday.getTime() &&
+                       returnTimestamp.getTime() < startOfTomorrow.getTime();
+            } catch (e) {
+                // console.error("[Dashboard] Filtering: Error parsing return_date for return:", ret, e);
+                return false;
+            }
           });
           todaysCount = todayOnly.length;
+          // console.log(`[Dashboard] Filtered for today. Count: ${todaysCount}`, todayOnly.map(r => ({id: r.id, date: r.return_date })));
+        } else {
+            // console.warn("[Dashboard] returnsRes is not an array or is undefined:", returnsRes);
         }
         setTodaysReturnCount(todaysCount);
 
@@ -107,23 +119,23 @@ function DashboardPage({ currentUser }) {
     const fetchChartData = async () => {
         setIsChartLoading(true);
         setChartError(null);
-        setChartProxyInfo('');
-        console.log("Dashboard: Fetching category overview chart data (multi-location aware)...");
+        // setChartProxyInfo(''); // Only relevant if using proxy data
+        // console.log("Dashboard: Fetching category overview chart data...");
         try {
             const result = await window.electronAPI.getInventoryByCategory();
             if (!isMounted) return;
 
             if (result.success && Array.isArray(result.data)) {
-                console.log("Dashboard: Received category overview data:", result.data);
+                // console.log("Dashboard: Received category overview data:", result.data);
                 setCategoryOverviewChartData({
                     labels: result.data.map(cat => cat.category || 'Uncategorized'),
                     datasets: [{
-                        label: 'Total Quantity by Category',
+                        label: 'Total Quantity by Category', // This label is hidden by display:false in options
                         data: result.data.map(cat => cat.total_quantity || 0),
                         borderColor: 'var(--color-accent-secondary, #7986CB)',
                         backgroundColor: 'rgba(121, 134, 203, 0.2)',
-                        tension: 0.3,
-                        fill: true,
+                        tension: 0.3, // More relevant for line charts, but harmless for bar
+                        fill: true,    // More relevant for area charts
                     }],
                 });
             } else {
@@ -149,7 +161,7 @@ function DashboardPage({ currentUser }) {
     setLogError(null);
 
     const fetchLogs = async () => {
-        console.log("Dashboard: Fetching initial activity log...");
+        // console.log("Dashboard: Fetching initial activity log...");
         try {
             const logs = await window.electronAPI.getActivityLog();
             if (isMounted) {
@@ -172,7 +184,7 @@ function DashboardPage({ currentUser }) {
         if (typeof removeListener === 'function') {
             cleanupListener = removeListener;
         } else {
-            console.warn("Dashboard: onNewLogEntry did not return a cleanup function.");
+            // console.warn("Dashboard: onNewLogEntry did not return a cleanup function.");
         }
     } catch (listenerError) {
         if (isMounted) setLogError("Failed to set up real-time log updates.");
@@ -185,10 +197,12 @@ function DashboardPage({ currentUser }) {
     };
   }, []);
 
-  const lineChartOptions = {
+  const barChartOptions = {
     responsive: true, maintainAspectRatio: false,
     plugins: {
-      legend: { position: 'bottom', labels: { color: 'var(--color-text-medium)', usePointStyle: true, boxWidth: 8, padding: 20 }},
+      legend: {
+        display: false, // Legend is hidden
+      },
       title: { display: false },
       tooltip: { backgroundColor: 'rgba(0,0,0,0.7)', titleFont: { size: 14 }, bodyFont: { size: 12 }, padding: 10, cornerRadius: 4 }
     },
@@ -196,7 +210,6 @@ function DashboardPage({ currentUser }) {
       y: { beginAtZero: true, ticks: { color: 'var(--color-text-light)'}, grid: { color: 'var(--color-border-soft)'}, title: {display: true, text: 'Aggregated Quantity'} },
       x: { ticks: { color: 'var(--color-text-light)'}, grid: { display: false }, title: {display: true, text: 'Category'} },
     },
-    elements: { line: { borderWidth: 2 }, point: { radius: 4, hoverRadius: 6 } }
   };
 
   const formatLogTime = (timestamp) => {
@@ -232,7 +245,7 @@ function DashboardPage({ currentUser }) {
               </div>
             </div>
             <div className="card stat-card">
-              <div className="stat-icon icon-todays-sales"><FaUndo /></div>
+              <div className="stat-icon icon-returned-today"><FaUndo /></div>
               <div className="stat-info">
                 <span>{isLoadingStats ? '...' : todaysReturnCount}</span>
                 <p>products returned today</p>
@@ -253,7 +266,7 @@ function DashboardPage({ currentUser }) {
                 {isChartLoading && <p className="no-data-message">Loading chart data...</p>}
                 {chartError && <p className="no-data-message analytics-error" style={{border:'none', padding:0}}>{chartError}</p>}
                 {!isChartLoading && !chartError && categoryOverviewChartData.datasets && categoryOverviewChartData.datasets.length > 0 && categoryOverviewChartData.datasets[0].data.length > 0 ? (
-                    <Bar options={lineChartOptions} data={categoryOverviewChartData} />
+                    <Bar options={barChartOptions} data={categoryOverviewChartData} />
                 ) : (
                     !isChartLoading && !chartError && <p className="no-data-message">No category data available for chart.</p>
                 )}

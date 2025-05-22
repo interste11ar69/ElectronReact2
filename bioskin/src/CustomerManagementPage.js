@@ -1,18 +1,20 @@
 // src/CustomerManagementPage.js
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import CustomerList from './CustomerList'; // Create this component next
-import { FaSearch, FaPlus, FaFileAlt, FaSlidersH } from 'react-icons/fa';
-import './CustomerManagementPage.css'; // Create this CSS file next
+import CustomerList from './CustomerList';
+import { FaSearch, FaPlus, FaArchive, FaUndo } from 'react-icons/fa'; // Added FaArchive, FaUndo
+import './CustomerManagementPage.css';
 
 function CustomerManagementPage({ currentUser }) {
     const [customers, setCustomers] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState(null);
+    const [successMessage, setSuccessMessage] = useState(''); // For archive/unarchive feedback
 
     // State for filters
     const [searchTerm, setSearchTerm] = useState('');
     const [debouncedSearchTerm, setDebouncedSearchTerm] = useState(searchTerm);
+    const [showArchived, setShowArchived] = useState(false); // New state
 
     const navigate = useNavigate();
 
@@ -26,38 +28,47 @@ function CustomerManagementPage({ currentUser }) {
     const loadCustomers = useCallback(async () => {
         setIsLoading(true);
         setError(null);
-        console.log("CustomerManagementPage: Calling electronAPI.getCustomers with searchTerm:", debouncedSearchTerm);
+        setSuccessMessage(''); // Clear previous success messages
+        console.log("CustomerManagementPage: Calling electronAPI.getCustomers with filters:", {
+            searchTerm: debouncedSearchTerm || null,
+            is_archived: showArchived // Pass archive status
+        });
         try {
-            // Ensure window.electronAPI.getCustomers is available
             if (typeof window.electronAPI.getCustomers !== 'function') {
-                throw new Error("window.electronAPI.getCustomers is not a function. Check preload.js and main.js IPC setup.");
+                throw new Error("window.electronAPI.getCustomers is not a function.");
             }
-            const fetchedCustomers = await window.electronAPI.getCustomers({ searchTerm: debouncedSearchTerm || null });
+            const fetchedCustomers = await window.electronAPI.getCustomers({
+                searchTerm: debouncedSearchTerm || null,
+                is_archived: showArchived // Send filter to backend
+            });
             console.log("CustomerManagementPage: Fetched customers:", fetchedCustomers);
 
             if (fetchedCustomers && Array.isArray(fetchedCustomers)) {
                 setCustomers(fetchedCustomers);
             } else if (fetchedCustomers && fetchedCustomers.error) {
                  throw new Error(fetchedCustomers.error);
-            }
-            else {
+            } else {
                 console.warn("CustomerManagementPage: getCustomers did not return an array. Received:", fetchedCustomers);
-                setCustomers([]); // Set to empty array on unexpected response
+                setCustomers([]);
             }
         } catch (err) {
             console.error("CustomerManagementPage: Error loading customers:", err);
             setError(`Failed to load customers: ${err.message}`);
-            setCustomers([]); // Clear customers on error
+            setCustomers([]);
         } finally {
             setIsLoading(false);
         }
-    }, [debouncedSearchTerm]);
+    }, [debouncedSearchTerm, showArchived]); // Add showArchived to dependencies
 
     useEffect(() => {
         loadCustomers();
     }, [loadCustomers]);
 
     const navigateToEdit = (customer) => {
+        if (customer.is_archived) {
+            alert("Archived customers cannot be edited. Please restore the customer first.");
+            return;
+        }
         navigate(`/customers/${customer.id}/edit`);
     };
 
@@ -65,24 +76,33 @@ function CustomerManagementPage({ currentUser }) {
         navigate('/customers/new');
     };
 
-    const handleDeleteCustomer = async (customerId) => {
-        if (window.confirm('Are you sure you want to delete this customer? This action cannot be undone.')) {
+    // Renamed from handleDeleteCustomer
+    const handleArchiveCustomer = async (customerId, customerName, isCurrentlyArchived) => {
+        const actionText = isCurrentlyArchived ? 'restore' : 'archive';
+        const friendlyName = customerName || `Customer ID ${customerId}`;
+        const confirmationMessage = `Are you sure you want to ${actionText} "${friendlyName}"?
+    ${isCurrentlyArchived ? 'They will become active again.' : 'They will be hidden from active lists but can be recovered.'}`;
+
+        if (window.confirm(confirmationMessage)) {
             setError(null);
+            setSuccessMessage('');
             try {
-                // Ensure window.electronAPI.deleteCustomer is available
-                if (typeof window.electronAPI.deleteCustomer !== 'function') {
-                    throw new Error("window.electronAPI.deleteCustomer is not a function.");
+                // We'll need a new API endpoint: archiveCustomer
+                if (typeof window.electronAPI.archiveCustomer !== 'function') {
+                    throw new Error("window.electronAPI.archiveCustomer is not a function.");
                 }
-                const result = await window.electronAPI.deleteCustomer(customerId);
+                // Pass customerId and the desired new archive status (true to archive, false to unarchive)
+                const result = await window.electronAPI.archiveCustomer(customerId, !isCurrentlyArchived);
                 if (result.success) {
-                    console.log(result.message);
+                    setSuccessMessage(result.message || `Customer ${actionText}d successfully!`);
                     loadCustomers(); // Reload customers
+                    setTimeout(() => setSuccessMessage(''), 3000);
                 } else {
-                    setError(result.message || 'Failed to delete customer.');
+                    setError(result.message || `Failed to ${actionText} customer.`);
                 }
             } catch (err) {
-                console.error("Error deleting customer:", err);
-                setError(`Error deleting customer: ${err.message}`);
+                console.error(`Error ${actionText}ing customer:`, err);
+                setError(`Error ${actionText}ing customer: ${err.message}`);
             }
         }
     };
@@ -90,11 +110,29 @@ function CustomerManagementPage({ currentUser }) {
     return (
         <div className="customer-management-page page-container">
             <header className="page-header-alt">
-                <h1>Customer List</h1>
-                {/* Add any header actions if needed */}
+                <h1>{showArchived ? "Archived Customer List" : "Customer List"}</h1>
+                <button
+                    className={`button ${showArchived ? 'button-primary' : 'button-secondary'}`}
+                    onClick={() => setShowArchived(!showArchived)}
+                    style={{fontSize: '0.9em', padding: '0.5em 1em'}}
+                >
+                    {showArchived ? <FaUndo style={{ marginRight: '8px' }} /> : <FaArchive style={{ marginRight: '8px' }} />}
+                    {showArchived ? 'View Active Customers' : 'View Archived Customers'}
+                </button>
             </header>
 
-            <div className="content-block-wrapper"> {/* Reusing class from ItemManagementPage.css for similar styling */}
+            {error && (
+                <div className="card error-message" role="alert"> {/* Assuming global .error-message .card styles */}
+                    Error: {error}
+                </div>
+            )}
+            {successMessage && (
+                <div className="card success-message" role="status"> {/* Assuming global .success-message .card styles */}
+                    {successMessage}
+                </div>
+            )}
+
+            <div className="content-block-wrapper">
                 <div className="filter-section-alt">
                     <div className="filters-bar">
                         <div className="filter-row">
@@ -106,19 +144,12 @@ function CustomerManagementPage({ currentUser }) {
                                     value={searchTerm}
                                     onChange={(e) => setSearchTerm(e.target.value)}
                                 />
-                                {/* <FaSlidersH className="filter-action-icon" title="Filter options" /> */}
                             </div>
-                            {/* Add other filters like dropdowns if needed later */}
                         </div>
                     </div>
                 </div>
 
-                <section className="stock-list-section"> {/* Reusing class */}
-                    {error && (
-                        <div className="card" style={{ color: 'var(--color-status-danger)', padding: '1rem', marginBottom: '1rem', border: '1px solid var(--color-status-danger)', backgroundColor: 'rgba(211, 47, 47, 0.05)' }}>
-                            Error: {error}
-                        </div>
-                    )}
+                <section className="stock-list-section">
                     <div className="table-container">
                         {isLoading ? (
                             <div className="loading-placeholder">Loading customers...</div>
@@ -126,17 +157,20 @@ function CustomerManagementPage({ currentUser }) {
                             <CustomerList
                                 customers={customers}
                                 onEdit={navigateToEdit}
-                                onDelete={currentUser?.role === 'admin' ? handleDeleteCustomer : null} // Only pass onDelete if admin
+                                onArchive={currentUser?.role === 'admin' ? handleArchiveCustomer : null} // Renamed prop
                                 userRole={currentUser?.role}
+                                viewingArchived={showArchived} // Pass this new prop
                             />
                         )}
                     </div>
                 </section>
 
                 <div className="page-actions-bar">
-                    <button className="button" onClick={navigateToAddNew}>
-                        <FaPlus style={{ marginRight: '8px' }} /> Add New Customer
-                    </button>
+                    {!showArchived && ( // Only show "Add New" if not viewing archived
+                        <button className="button" onClick={navigateToAddNew}>
+                            <FaPlus style={{ marginRight: '8px' }} /> Add New Customer
+                        </button>
+                    )}
                 </div>
             </div>
         </div>

@@ -11,11 +11,9 @@ import {
     FaHistory,
     FaSlidersH,
     FaBoxes,
-    FaFileInvoiceDollar, // For Sales Orders list
     FaCartPlus,
     FaListAlt,
     FaExchangeAlt
-    // Optional: For direct "New Sales Order" link
 } from 'react-icons/fa';
 import appLogo from './assets/logo.png';
 

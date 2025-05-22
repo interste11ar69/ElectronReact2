@@ -45,6 +45,7 @@ const generateChartColors = (numColors, opacity = 0.7) => {
 };
 
 // --- Initial Chart Data Structures ---
+// initialBarChartData is no longer used by remaining charts, but keeping if other bar charts are added.
 const initialBarChartData = () => ({ labels: [], datasets: [{ label: '', data: [], backgroundColor: 'rgba(128,128,128,0.7)' }] });
 const initialPieDoughnutData = () => ({ labels: [], datasets: [{ label: '', data: [], backgroundColor: [] }] });
 
@@ -79,42 +80,19 @@ const storageChartOptions = () => ({
   plugins: commonPieDoughnutPlugins(`Stock Quantity by Storage`),
 });
 
-const topSellingItemsChartOptions = (periodText = '') => ({
-  responsive: true, indexAxis: 'y', maintainAspectRatio: false,
-  layout: { padding: { left: 10, right: 35 } },
-  plugins: {
-    legend: { display: false },
-    title: { display: false, text: `Top Selling Items ${periodText} (by Quantity)`, font: { size: 16, weight: '600' }, padding: { bottom: 15 } },
-    tooltip: { callbacks: { label: ctx => `${ctx.dataset.label || ''}: ${ctx.parsed.x} units` } },
-    datalabels: { anchor: 'end', align: 'right', offset: 4, formatter: (v) => v, color: 'black', font: { weight: 'bold' } }
-  },
-  scales: { x: { beginAtZero: true, title: { display: true, text: 'Quantity Sold' } }, y: { ticks: { font: { size: 10 } } } },
-});
-
-const salesByStatusChartOptions = (periodText = '') => ({
-  responsive: true, maintainAspectRatio: false,
-  plugins: commonPieDoughnutPlugins(`Sales Orders by Status ${periodText}`),
-});
-
+// const topSellingItemsChartOptions = (periodText = '') => ({ ... }); // Removed
 
 function AnalyticsPage() {
     // --- KPIs and Chart States ---
     const [inventorySummary, setInventorySummary] = useState(null);
     const [categoryChartData, setCategoryChartData] = useState(initialPieDoughnutData());
     const [storageChartData, setStorageChartData] = useState(initialPieDoughnutData());
-    const [salesPeriod, setSalesPeriod] = useState('last30days');
-    const [salesSummary, setSalesSummary] = useState(null);
-    const [topSellingItemsChartData, setTopSellingItemsChartData] = useState(initialBarChartData());
-    const [salesByStatusChartData, setSalesByStatusChartData] = useState(initialPieDoughnutData());
     const [lowStockItemsList, setLowStockItemsList] = useState([]);
 
     // --- Detailed Report States ---
     const [detailedStockData, setDetailedStockData] = useState([]);
     const [isDetailedStockLoading, setIsDetailedStockLoading] = useState(false);
-    const [salesDetailData, setSalesDetailData] = useState([]);
-    const [isSalesDetailLoading, setIsSalesDetailLoading] = useState(false);
 
-    // --- Filter Options & Values States ---
     const [categoryFilterOptions, setCategoryFilterOptions] = useState([]);
     const [locationFilterOptions, setLocationFilterOptions] = useState([]);
     const [stockReportFilters, setStockReportFilters] = useState({ category: null, locationId: null, lowStockOnly: false });
@@ -152,14 +130,13 @@ function AnalyticsPage() {
         setNotification({ type: '', message: '' });
 
         try {
-            const [invSumRes, lowStockRes, catRes, storageRes, salesSumRes, topItemsRes, salesStatRes] = await Promise.all([
+
+            const [invSumRes, lowStockRes, catRes, storageRes] = await Promise.all([
                 window.electronAPI.getInventorySummary(),
                 window.electronAPI.getLowStockItems(10),
                 window.electronAPI.getInventoryByCategory(),
                 window.electronAPI.getInventoryByStorage(),
-                window.electronAPI.getSalesSummary(salesPeriod),
-                window.electronAPI.getTopSellingItems({period: salesPeriod, limit: 7}), // Fetch 7 for chart
-                window.electronAPI.getSalesByStatus(salesPeriod),
+
             ]);
 
             if (invSumRes.success) setInventorySummary(invSumRes.summary); else throw new Error(invSumRes.message || 'Failed to load inventory summary');
@@ -179,21 +156,6 @@ function AnalyticsPage() {
                 });
             } else { console.warn("Storage data invalid:", storageRes); setStorageChartData(initialPieDoughnutData()); }
 
-            if (salesSumRes.success) setSalesSummary(salesSumRes.summary); else console.warn("Sales summary invalid:", salesSumRes);
-
-            if (topItemsRes.success && Array.isArray(topItemsRes.items) && topItemsRes.items.length > 0) {
-                setTopSellingItemsChartData({
-                  labels: topItemsRes.items.map(item => `${item.name || 'N/A'} (SKU: ${item.sku || 'N/A'})`.substring(0,35) + (item.name.length > 35 ? '...' : '')),
-                  datasets: [{ label: 'Qty Sold', data: topItemsRes.items.map(item => item.total_quantity_sold || 0), backgroundColor: generateChartColors(topItemsRes.items.length, 0.65), borderColor: generateChartColors(topItemsRes.items.length,1), borderWidth:1 }],
-                });
-            } else { console.warn("Top selling items data invalid or empty:", topItemsRes); setTopSellingItemsChartData(initialBarChartData()); }
-
-            if (salesStatRes.success && Array.isArray(salesStatRes.data) && salesStatRes.data.length > 0) {
-                setSalesByStatusChartData({
-                  labels: salesStatRes.data.map(s => s.status),
-                  datasets: [{ label: 'Order Count', data: salesStatRes.data.map(s => s.count || 0), backgroundColor: generateChartColors(salesStatRes.data.length), borderColor: '#fff', borderWidth: 1 }],
-                });
-            } else { console.warn("Sales by status data invalid or empty:", salesStatRes); setSalesByStatusChartData(initialPieDoughnutData()); }
 
         } catch (err) {
             console.error("AnalyticsPage: Error fetching core data:", err);
@@ -201,7 +163,7 @@ function AnalyticsPage() {
         } finally {
             setIsLoading(false);
         }
-    }, [salesPeriod]);
+    }, []);
 
     useEffect(() => {
         fetchCoreData();
@@ -232,34 +194,6 @@ function AnalyticsPage() {
         fetchDetailedStock();
     }, [fetchDetailedStock]);
 
-    // Fetch Sales Detail Report Data
-    const fetchSalesDetail = useCallback(async () => {
-        setIsSalesDetailLoading(true);
-        try {
-            const filters = { period: salesPeriod };
-            const result = await window.electronAPI.getSalesDetailReport(filters);
-            if (result.success) {
-                setSalesDetailData(result.data || []);
-            } else {
-                console.error("Failed to fetch sales detail report:", result.message);
-                setSalesDetailData([]);
-                setNotification({type: 'error', message: `Sales Detail: ${result.message || 'Failed to load.'}`});
-            }
-        } catch (err) {
-            console.error("Error fetching sales detail report:", err);
-            setSalesDetailData([]);
-            setNotification({type: 'error', message: `Sales Detail Error: ${err.message}`});
-        } finally {
-            setIsSalesDetailLoading(false);
-        }
-    }, [salesPeriod]);
-
-    useEffect(() => {
-        fetchSalesDetail();
-    }, [fetchSalesDetail]);
-
-    const handleSalesPeriodChange = (event) => setSalesPeriod(event.target.value);
-
     const handleStockFilterChange = (filterName, selectedOptionOrEvent) => {
         let value;
         if (filterName === 'lowStockOnly') {
@@ -269,9 +203,6 @@ function AnalyticsPage() {
         }
         setStockReportFilters(prev => ({ ...prev, [filterName]: value }));
     };
-
-    const periodText = `(${salesPeriod.replace('last', 'Last ').replace('days', ' Days').replace('today', 'Today')})`;
-
     const handleExport = async (reportIdentifier, format) => {
         setNotification({ type: '', message: '' }); // Clear previous notifications
         let dataToExport;
@@ -280,9 +211,7 @@ function AnalyticsPage() {
         if (reportIdentifier === 'detailedStock') {
             dataToExport = detailedStockData;
             fileNamePrefix = 'detailed_stock_report';
-        } else if (reportIdentifier === 'salesDetail') {
-            dataToExport = salesDetailData;
-            fileNamePrefix = 'sales_detail_report';
+
         } else {
             setNotification({type: 'error', message: "Unknown report to export."});
             return;
@@ -295,7 +224,7 @@ function AnalyticsPage() {
 
         try {
             setNotification({type: 'info', message: `Exporting ${format.toUpperCase()}...`});
-            const result = await window.electronAPI.exportGenericData({ // Changed from exportReportData
+            const result = await window.electronAPI.exportGenericData({
                 reportData: dataToExport,
                 format: format,
                 fileNamePrefix: fileNamePrefix
@@ -318,15 +247,8 @@ function AnalyticsPage() {
     return (
         <div className="page-container analytics-page">
             <header className="analytics-header">
-                <h1 className="analytics-title">Inventory & Sales Analytics</h1>
-                <div className="sales-period-filter">
-                    <label htmlFor="salesPeriod">Sales Data Period:</label>
-                    <select id="salesPeriod" value={salesPeriod} onChange={handleSalesPeriodChange}>
-                        <option value="today">Today</option>
-                        <option value="last7days">Last 7 Days</option>
-                        <option value="last30days">Last 30 Days</option>
-                    </select>
-                </div>
+                <h1 className="analytics-title">Inventory Analytics</h1> {/* Changed title */}
+
             </header>
 
             <main>
@@ -349,17 +271,6 @@ function AnalyticsPage() {
                     ) : !error && <p className="no-data-message">Could not load inventory summary.</p>}
                 </section>
 
-                <section className="analytics-section">
-                    <h2>Sales Summary {periodText}</h2>
-                    {salesSummary ? (
-                        <ul className="summary-list">
-                            <li><strong>Total Sales Value:</strong> <span>{formatCurrency(salesSummary.totalSalesValue)}</span></li>
-                            <li><strong>Number of Orders:</strong> <span>{salesSummary.numberOfOrders}</span></li>
-                            <li><strong>Avg. Order Value:</strong> <span>{formatCurrency(salesSummary.averageOrderValue)}</span></li>
-                        </ul>
-                    ) : !error && <p className="no-data-message">No sales summary for this period.</p>}
-                </section>
-
                 <div className="charts-grid">
                     <div className="chart-card">
                         <h3>Inventory Value by Category</h3>
@@ -373,20 +284,7 @@ function AnalyticsPage() {
                             <div className="chart-wrapper"><Pie options={storageChartOptions()} data={storageChartData} /></div>
                         ) : !error && <p className="no-data-message">No storage data for chart.</p>}
                     </div>
-                    <div className="chart-card">
-                        <h3>Top Selling Items {periodText}</h3>
-                        {topSellingItemsChartData.datasets[0]?.data.length > 0 ? (
-                            <div className="chart-wrapper top-items-chart-wrapper" style={{ height: `${Math.max(300, (topSellingItemsChartData.labels?.length || 0) * 40 + 60)}px` }}>
-                                <Bar options={topSellingItemsChartOptions(periodText)} data={topSellingItemsChartData} />
-                            </div>
-                        ) : !error && <p className="no-data-message">No top selling items for this period.</p>}
-                    </div>
-                    <div className="chart-card">
-                        <h3>Sales Orders by Status {periodText}</h3>
-                        {salesByStatusChartData.datasets[0]?.data.length > 0 ? (
-                            <div className="chart-wrapper"><Doughnut options={salesByStatusChartOptions(periodText)} data={salesByStatusChartData} /></div>
-                        ) : !error && <p className="no-data-message">No sales by status data for this period.</p>}
-                    </div>
+
                 </div>
 
                 {/* Detailed Stock Report Section */}
@@ -449,51 +347,8 @@ function AnalyticsPage() {
                     ) : <p className="no-data-message" style={{minHeight: '100px'}}>No detailed stock data matching filters.</p>}
                 </section>
 
-                {/* Sales Detail Report Section */}
-                <section className="analytics-section">
-                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap' }}>
-                        <h2 style={{marginBottom: '0.5rem'}}>Sales Detail Report {periodText}</h2>
-                         <div>
-                            <button className="button button-secondary button-small" onClick={() => handleExport('salesDetail', 'csv')} disabled={salesDetailData.length === 0}>Export CSV</button>
-                            <button className="button button-secondary button-small" style={{marginLeft:'10px'}} onClick={() => handleExport('salesDetail', 'xlsx')} disabled={salesDetailData.length === 0}>Export XLSX</button>
-                        </div>
-                    </div>
-                    {/* Future: Add more filters for sales detail: customer, item/bundle, etc. */}
-                    {isSalesDetailLoading ? <p className="no-data-message" style={{minHeight: '100px'}}>Loading sales details...</p> : salesDetailData.length > 0 ? (
-                        <div className="table-container">
-                            <table className="table">
-                                <thead>
-                                    <tr>
-                                        <th>Order Date</th><th>Order #</th><th>Customer</th>
-                                        <th>Item/Bundle Name</th><th>SKU</th>
-                                        <th className="text-right">Qty</th>
-                                        <th className="text-right">Unit Price</th>
-                                        <th className="text-right">Line Total</th>
-                                        <th>Order Status</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {salesDetailData.map(row => (
-                                        <tr key={row.id}>
-                                            <td>{formatDate(row.sales_orders?.order_date)}</td>
-                                            <td>{row.sales_orders?.order_number || `SO-${row.sales_orders?.id}`}</td>
-                                            <td>{row.sales_orders?.customer?.full_name || 'N/A'}</td>
-                                            <td>{row.item_snapshot_name}</td>
-                                            <td>{row.item_snapshot_sku || 'N/A'}</td>
-                                            <td className="text-right">{row.quantity}</td>
-                                            <td className="text-right">{formatCurrency(row.unit_price)}</td>
-                                            <td className="text-right">{formatCurrency(row.line_total)}</td>
-                                            <td>{row.sales_orders?.status}</td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                    ) : <p className="no-data-message" style={{minHeight: '100px'}}>No sales details for this period.</p>}
-                </section>
-
                 <section className="analytics-section low-stock-section">
-                    <h2>{`Low Stock Items (Overall Quantity < 10)`}</h2>
+                    <h2>{`Low Stock Items (Overall Quantity < Threshold)`}</h2> {/* Updated title slightly */}
                     {lowStockItemsList.length > 0 ? (
                         <div className="low-stock-list-container">
                             <ul className="low-stock-list">

@@ -2,8 +2,8 @@
 
 .bundle-list-page .page-header-alt {
     display: flex;
-    justify-content: space-between;
-    align-items: center;
+    justify-content: space-between; /* Pushes title to left, actions div to right */
+    align-items: center; /* Vertically aligns title and button group */
     margin-bottom: 1.5rem;
     padding-bottom: 1rem;
     border-bottom: 1px solid var(--color-border-soft);
@@ -11,130 +11,211 @@
 
 .bundle-list-page .page-header-alt h1 {
     margin: 0;
-    font-size: 1.8em; /* Ensure this matches your other page titles if needed */
-    font-weight: 700; /* Ensure titles are bold */
+    font-size: 1.8em; /* Or your standard page title size */
+    font-weight: 700;
+    color: var(--color-text-dark); /* Ensure title color is consistent */
 }
+
+/* Container for the action buttons in the header */
+.bundle-list-page .page-header-actions {
+    display: flex;
+    align-items: center;
+    gap: calc(var(--spacing-unit) * 2); /* Space between "View Archived" and "Add New" buttons */
+}
+
+/* General styling for buttons within the page-header-actions group */
+.bundle-list-page .page-header-actions .button {
+    padding: calc(var(--spacing-unit) * 1.75) calc(var(--spacing-unit) * 3); /* Consistent padding */
+    font-size: 0.9em;
+    font-weight: 500;
+    border-radius: var(--border-radius-rounded); /* Use your more rounded style */
+    line-height: 1.4; /* Helps vertically center text if icons are present */
+    display: inline-flex; /* For icon alignment */
+    align-items: center;
+}
+
+/*
+   Specific styles for .button-primary and .button-secondary
+   should come from your global index.css.
+   Example (if you need to override or they aren't global):
+
+.bundle-list-page .page-header-actions .button.button-primary {
+    background-color: var(--color-primary-dark);
+    border-color: var(--color-primary-dark);
+    color: var(--color-primary-light);
+}
+.bundle-list-page .page-header-actions .button.button-primary:hover {
+    opacity: 0.85;
+}
+
+.bundle-list-page .page-header-actions .button.button-secondary {
+    background-color: var(--color-surface);
+    border: 1px solid var(--color-primary-dark);
+    color: var(--color-primary-dark);
+}
+.bundle-list-page .page-header-actions .button.button-secondary:hover {
+    background-color: var(--color-primary-light);
+}
+*/
+
 
 #bundleTable {
     width: 100%;
     border-collapse: collapse;
+    margin-top: 1rem; /* Space from header or filters */
 }
 
 #bundleTable th,
 #bundleTable td {
     border: 1px solid var(--color-border-soft);
-    padding: 0.75rem; /* Base padding */
+    padding: 0.75rem 1rem; /* Adjusted padding for better readability */
     text-align: left;
-    /* vertical-align: top; /* Keep this if you prefer for other cells like component list */
-                           /* For action buttons, middle is often better if they are single line */
+    vertical-align: middle;
+    font-size: 0.9em; /* Slightly smaller font for table data */
 }
+
+#bundleTable thead th {
+    background-color: var(--color-table-header-bg);
+    font-weight: 600;
+    color: var(--color-text-dark); /* Darker text for headers */
+    white-space: nowrap;
+    position: sticky;
+    top: 0;
+    z-index: 1; /* Ensure header stays above scrolling content */
+    border-bottom-width: 2px; /* Stronger bottom border for header */
+    border-bottom-color: var(--color-border-strong);
+}
+
+#bundleTable tbody tr:hover {
+    background-color: var(--color-table-row-hover);
+}
+
+/* Styling for the components list within a cell */
+.component-list-inline {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    font-size: 0.85em; /* Slightly smaller for component list items */
+}
+.component-list-inline li {
+    margin-bottom: 0.3rem;
+    color: var(--color-text-medium); /* Medium color for component text */
+}
+.component-list-inline li:last-child {
+    margin-bottom: 0;
+}
+.component-list-inline li span { /* For the "STORE Stock: X" part */
+    font-size: 0.9em; /* Relative to parent li */
+    color: var(--color-text-light);
+    margin-left: 0.5em;
+}
+
+
+/* Stock Status (reused from index.css or ItemList.css if defined globally) */
+.stock-status-low { color: var(--color-status-danger); font-weight: bold; }
+.stock-status-moderate { color: var(--color-status-warning); font-weight: 500; }
+.stock-status-high { color: var(--color-status-success); font-weight: 500; }
+
 
 /* --- Styles for Table Actions Cell --- */
 #bundleTable td.table-actions {
-    vertical-align: middle; /* Vertically align the content (button group) in the middle of the cell */
-    /* Remove white-space: nowrap; to allow wrapping */
-    /* text-align: left; /* Default, or center if you want the wrapped group centered */
+    vertical-align: middle;
+    /* text-align: center; /* Uncomment if you want the button group centered */
 }
 
-/* Create a flex container for the buttons inside the TD */
+/* Flex container for the buttons inside the TD */
 .actions-button-group {
     display: flex;
-    flex-wrap: wrap; /* Allow buttons to wrap to the next line */
-    gap: calc(var(--spacing-unit) * 1.5); /* Consistent gap between buttons, both horizontally and vertically when wrapped */
-    align-items: center; /* Align items nicely if they wrap to multiple lines */
-    /* justify-content: flex-start; /* Default: aligns buttons to the start (left) */
-    /* Or use 'center' if you want the button group (possibly wrapped) to be centered within the cell */
-    /* justify-content: center; */
+    flex-wrap: wrap;
+    gap: calc(var(--spacing-unit) * 1.5); /* Consistent gap */
+    align-items: center;
+    /* justify-content: center; /* Uncomment if you want the group itself centered */
 }
-
 
 /* --- Styles for the Action Buttons Themselves --- */
 #bundleTable .table-actions .button-edit,
 #bundleTable .table-actions .button-delete,
-#bundleTable .table-actions .record-sale-btn {
-    /* margin-right is now handled by 'gap' in .actions-button-group */
-    /* margin-bottom is now handled by 'gap' in .actions-button-group when wrapped */
+#bundleTable .table-actions .button-unarchive {
     vertical-align: middle;
     display: inline-flex;
     align-items: center;
-    padding: calc(var(--spacing-unit) * 1.25) calc(var(--spacing-unit) * 2);
-    font-size: 0.85em;
+    padding: calc(var(--spacing-unit) * 1) calc(var(--spacing-unit) * 1.75); /* Slightly smaller padding for table buttons */
+    font-size: 0.8em; /* Smaller font for table buttons */
     border-radius: var(--border-radius);
-    flex-shrink: 0; /* Prevent buttons from shrinking too much if the container is very narrow */
+    flex-shrink: 0;
+    line-height: 1.3;
 }
 
-/* Space for icons within buttons */
 #bundleTable .table-actions .button-edit svg,
 #bundleTable .table-actions .button-delete svg,
-#bundleTable .table-actions .record-sale-btn svg {
-    margin-right: calc(var(--spacing-unit) * 1);
-    font-size: 1.1em;
+#bundleTable .table-actions .button-unarchive svg {
+    margin-right: calc(var(--spacing-unit) * 0.75); /* Smaller margin for icons in smaller buttons */
+    font-size: 1.2em; /* Icon size relative to button font */
 }
 
-/* Specific styles for .record-sale-btn (can refine from your existing) */
-.record-sale-btn {
-    background-color: var(--color-status-success);
+/* .button-edit and .button-delete should inherit from global styles in index.css */
+
+/* Specific style for .button-unarchive (if not globally defined) */
+.button-unarchive {
+    background-color: transparent;
     border: 1px solid var(--color-status-success);
-    color: white;
+    color: var(--color-status-success);
     cursor: pointer;
 }
-.record-sale-btn:hover {
-    opacity: 0.85;
+.button-unarchive:hover {
+    background-color: var(--color-status-success);
+    color: white;
+    opacity: 1;
 }
-.record-sale-btn:disabled {
-    background-color: var(--color-text-light) !important;
-    border-color: var(--color-text-light) !important;
-    color: var(--color-surface) !important;
-    opacity: 0.65;
+.button-unarchive:disabled {
+    opacity: 0.5;
     cursor: not-allowed;
 }
 
 
-/* --- Modal Styles (Keep as is, looks good) --- */
-.modal-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background-color: rgba(0, 0, 0, 0.6);
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  z-index: 1050; /* Ensure it's above other content */
+/* General utility classes (should be in index.css) */
+.text-center { text-align: center !important; }
+.text-right { text-align: right !important; }
+
+/* Error and Success Message Styling */
+.bundle-list-page .error-message.card,
+.bundle-list-page .success-message.card {
+    /* Assuming .card provides base background, padding, border-radius */
+    margin-bottom: 1.5rem; /* Consistent margin */
+    padding: 1rem; /* Consistent padding */
+    font-size: 0.9em;
+    border-left-width: 5px;
+    border-left-style: solid;
+}
+.bundle-list-page .error-message.card {
+    color: var(--color-status-danger);
+    background-color: rgba(211, 47, 47, 0.05); /* Lighter background */
+    border-color: var(--color-status-danger); /* For left border and main border if .card doesn't have one */
+    border-left-color: var(--color-status-danger);
+}
+.bundle-list-page .success-message.card {
+    color: var(--color-status-success);
+    background-color: rgba(56, 142, 60, 0.05); /* Lighter background */
+    border-color: var(--color-status-success);
+    border-left-color: var(--color-status-success);
 }
 
-.modal-content.record-sale-modal { /* Specific class for this modal */
-  background-color: var(--color-surface);
-  padding: calc(var(--spacing-unit) * 4) calc(var(--spacing-unit) * 5);
-  border-radius: var(--border-radius-rounded);
-  box-shadow: var(--box-shadow);
-  width: 90%;
-  max-width: 450px;
-  text-align: left;
+/* Loading placeholder */
+.bundle-list-page .loading-placeholder {
+    text-align: center;
+    padding: 2rem;
+    color: var(--color-text-light);
+    font-style: italic;
 }
 
-.record-sale-modal h3 {
-    margin-top: 0;
-    margin-bottom: 1.5rem;
-    font-size: 1.4em;
-    border-bottom: 1px solid var(--color-border-soft);
-    padding-bottom: 0.75rem;
+/* Ensure the main content wrapper allows for the sticky header if the table scrolls */
+.bundle-list-page .content-block-wrapper {
+    /* If this wrapper has a fixed height and overflow: auto for the table section,
+       ensure its padding doesn't interfere with sticky headers.
+       Usually, placing overflow on a direct parent of the table is best for sticky. */
 }
-.record-sale-modal .form-group {
-    margin-bottom: 1rem;
-}
-.record-sale-modal .form-group label {
-    display: block;
-    margin-bottom: 0.5rem;
-    font-weight: 500;
-}
-.record-sale-modal input[type="number"] {
-    /* Use global input styles or define here */
-    padding: calc(var(--spacing-unit) * 1.5);
-    border: 1px solid var(--color-border-strong);
-    border-radius: var(--border-radius);
-    width: 100px; /* Adjust as needed */
-    /* Ensure text alignment if needed */
-    /* text-align: right; */
+
+.bundle-list-page .table-container {
+    overflow-x: auto; /* For horizontal scrolling of the table if needed */
+    /* If you want vertical scroll for the table itself, add overflow-y: auto and a max-height here */
 }

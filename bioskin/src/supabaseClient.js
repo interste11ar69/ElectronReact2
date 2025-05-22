@@ -213,48 +213,99 @@ export const db = {
     }
   },
 
-  async createItem(itemData, initialStockEntries = [], createdByUserId, createdByUsername) {
-    if (!supabase) return { success: false, message: "Database client not initialized." };
-    const itemRecordToInsert = {
-      name: itemData.name,
-      sku: itemData.sku || null,
-      description: itemData.description || null,
-      cost_price: parseFloat(itemData.cost_price) || 0,
-      category: itemData.category || "Uncategorized",
-      variant: itemData.variant || null,
-      status: itemData.status || "Normal",
-      is_archived: false,
-    };
-    let newItem;
-    try {
-      const { data, error: itemInsertError } = await supabase.from("items").insert([itemRecordToInsert]).select().single();
-      if (itemInsertError) throw itemInsertError;
-      if (!data) throw new Error("Item master record creation failed to return data.");
-      newItem = data;
-      if (initialStockEntries && Array.isArray(initialStockEntries) && initialStockEntries.length > 0) {
-        for (const stockEntry of initialStockEntries) {
-          if (stockEntry.locationId && Number(stockEntry.quantity) > 0) { // Ensure quantity is positive for initial entry
-            const transactionDetails = {
-              transactionType: "INITIAL_STOCK_ENTRY",
-              referenceId: String(newItem.id),
-              referenceType: "NEW_ITEM_CREATION",
-              userId: createdByUserId,
-              usernameSnapshot: createdByUsername,
-              notes: `Initial stock for new item "${newItem.name}" at location ID ${stockEntry.locationId}${stockEntry.locationName ? ` (${stockEntry.locationName})` : ""}.`,
-            };
-            const adjustmentResult = await db.adjustStockQuantity(newItem.id, stockEntry.locationId, Number(stockEntry.quantity), transactionDetails);
-            if (!adjustmentResult.success) {
-              console.error(`[db.createItem] Failed to add initial stock for item ${newItem.id} at location ${stockEntry.locationId}: ${adjustmentResult.message}`);
+  async checkSkuExists(sku) {
+      if (!supabase || !sku) {
+        // console.warn("[db.checkSkuExists] Supabase client not init or no SKU provided.");
+        return { exists: false, item: null, error: "SKU not provided for check." };
+      }
+      try {
+        const { data, error, count } = await supabase
+          .from('items')
+          .select('id, name, sku, is_archived', { count: 'exact' }) // Fetch a bit more info if needed
+          .eq('sku', sku)
+          .limit(1); // We only need to know if at least one exists
+
+        if (error) {
+          console.error(`[db.checkSkuExists] Error checking SKU ${sku}:`, error);
+          return { exists: false, item: null, error: error.message };
+        }
+
+        const itemExists = count > 0;
+        return { exists: itemExists, item: itemExists ? data[0] : null, error: null };
+
+      } catch (e) {
+        console.error(`[db.checkSkuExists] Exception checking SKU ${sku}:`, e);
+        return { exists: false, item: null, error: e.message };
+      }
+    },
+
+  async createItem(itemPayload, initialStockEntries = [], createdByUserId, createdByUsername) {
+      // itemPayload: { itemData: {name, sku, ...}, initialStockEntries: [{locationId, quantity, locationName}, ...] }
+      if (!supabase) return { success: false, message: "Database client not initialized." };
+
+      const { itemData } = itemPayload;
+
+      // --- SERVER-SIDE SKU DUPLICATION CHECK ---
+      if (itemData.sku && itemData.sku.trim() !== "") {
+        const skuCheck = await this.checkSkuExists(itemData.sku.trim());
+        if (skuCheck.exists) {
+          let message = `SKU "${itemData.sku.trim()}" already exists for item "${skuCheck.item.name}".`;
+          if (skuCheck.item.is_archived) {
+            message += " The existing item is currently archived.";
+          }
+          return { success: false, message: message, isDuplicateSku: true, existingItem: skuCheck.item };
+        }
+        if (skuCheck.error) { // Handle error during SKU check
+          return { success: false, message: `Error checking SKU: ${skuCheck.error}`, isDuplicateSku: false };
+        }
+      }
+      // --- END SERVER-SIDE SKU DUPLICATION CHECK ---
+
+      const itemRecordToInsert = {
+        name: itemData.name,
+        sku: itemData.sku ? itemData.sku.trim() : null,
+        description: itemData.description || null,
+        cost_price: parseFloat(itemData.cost_price) || 0,
+        category: itemData.category || "Uncategorized",
+        variant: itemData.variant || null,
+        status: itemData.status || "Normal",
+        is_archived: false,
+      };
+      let newItem;
+      try {
+        const { data, error: itemInsertError } = await supabase.from("items").insert([itemRecordToInsert]).select().single();
+        if (itemInsertError) { // This will catch the DB unique constraint violation too
+          if (itemInsertError.code === '23505') { // PostgreSQL unique violation code
+               return { success: false, message: `SKU "${itemData.sku.trim()}" already exists. Please use a unique SKU.`, isDuplicateSku: true };
+          }
+          throw itemInsertError;
+        }
+        if (!data) throw new Error("Item master record creation failed to return data.");
+        newItem = data;
+        if (initialStockEntries && Array.isArray(initialStockEntries) && initialStockEntries.length > 0) {
+          for (const stockEntry of initialStockEntries) {
+            if (stockEntry.locationId && Number(stockEntry.quantity) >= 0) { // Allow 0 initial stock
+              const transactionDetails = {
+                transactionType: "INITIAL_STOCK_ENTRY",
+                referenceId: String(newItem.id),
+                referenceType: "NEW_ITEM_CREATION",
+                userId: createdByUserId,
+                usernameSnapshot: createdByUsername,
+                notes: `Initial stock for new item "${newItem.name}" at location ID ${stockEntry.locationId}${stockEntry.locationName ? ` (${stockEntry.locationName})` : ""}.`,
+              };
+              const adjustmentResult = await db.adjustStockQuantity(newItem.id, stockEntry.locationId, Number(stockEntry.quantity), transactionDetails);
+              if (!adjustmentResult.success) {
+                console.error(`[db.createItem] Failed to add initial stock for item ${newItem.id} at location ${stockEntry.locationId}: ${adjustmentResult.message}`);
+              }
             }
           }
         }
+        return { success: true, item: newItem, message: "Item created successfully." }; // Removed "with initial stock" for brevity
+      } catch (error) {
+        console.error("Error in createItem process:", error);
+        return { success: false, message: error.message || "Failed to create item.", isDuplicateSku: error.code === '23505' };
       }
-      return { success: true, item: newItem, message: "Item created successfully with initial stock." };
-    } catch (error) {
-      console.error("Error in createItem process:", error);
-      return { success: false, message: error.message || "Failed to create item or set initial stock." };
-    }
-  },
+    },
 
   // incrementAllocatedQuantity and decrementAllocatedQuantity are related to sales order fulfillment,
   // if you are completely removing sales, these might not be needed unless used for other reservation systems.

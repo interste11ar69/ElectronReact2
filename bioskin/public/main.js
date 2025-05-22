@@ -248,19 +248,37 @@ app.whenReady().then(() => {
       if (!itemData || !itemData.name) {
         return { success: false, message: "Item name is required." };
       }
-      const result = await db.createItem(itemData, initialStockEntries || [], user.id, user.username);
+
+      // Call the modified db.createItem
+      const result = await db.createItem(itemPayload, initialStockEntries || [], user.id, user.username); // Pass itemPayload directly
+
       if (result.success && result.item) {
         logActivity(user.username, "Added inventory item", `Name: ${result.item.name}, SKU: ${result.item.sku || "N/A"}, ID: ${result.item.id}`);
       } else {
+        // Log failure, result.message will contain the duplicate SKU info if applicable
         logActivity(user.username, "Failed to add item", result.message || "Unknown DB error");
       }
-      return result;
+      return result; // Return the full result object which may include isDuplicateSku
     } catch (error) {
       console.error("[main.js] Error creating item:", itemPayload, error);
       logActivity(currentUser?.username, "Error creating item", error.message);
       return { success: false, message: error.message || "Unexpected error creating item." };
     }
   });
+
+  ipcMain.handle("check-sku-exists", async (event, sku) => {
+      console.log(`[main.js] IPC check-sku-exists called for SKU: ${sku}`);
+      try {
+        if (!sku || String(sku).trim() === "") {
+          return { exists: false, item: null, error: "SKU cannot be empty." };
+        }
+        return await db.checkSkuExists(String(sku).trim());
+      } catch (error) {
+        console.error(`[main.js] Error checking SKU existence for ${sku}:`, error);
+        logActivity(currentUser?.username, "Error checking SKU", `SKU: ${sku}, Error: ${error.message}`);
+        return { exists: false, item: null, error: error.message || "Failed to check SKU." };
+      }
+    });
 
   ipcMain.handle("update-item", async (event, itemData) => {
     const user = currentUser;

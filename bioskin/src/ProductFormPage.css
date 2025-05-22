@@ -160,3 +160,10 @@
     border-radius: var(--border-radius);
     font-size: 0.9em;
 }
+
+.error-text-small {
+    color: var(--color-status-danger); /* Or your error color variable */
+    font-size: 0.85em;
+    display: block;
+    margin-top: 0.25rem;
+}

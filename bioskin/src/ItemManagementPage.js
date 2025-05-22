@@ -6,23 +6,24 @@ import {
     FaSearch,
     FaThLarge,
     FaPlus,
-    FaArchive // New icon for archiving
+    FaArchive, // For "View Archived" button
+    FaUndo    // For "View Active" button when viewing archived
 } from 'react-icons/fa';
 import './ItemManagementPage.css';
 
 function ItemManagementPage({ currentUser }) {
+    console.log('ItemManagementPage currentUser:', currentUser); // For debugging
     const [items, setItems] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState(null);
+    const [successMessage, setSuccessMessage] = useState(''); // For user feedback
 
     // State for filters
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedCategory, setSelectedCategory] = useState('');
     const [selectedStorage, setSelectedStorage] = useState('');
     const [debouncedSearchTerm, setDebouncedSearchTerm] = useState(searchTerm);
-    // --- MODIFICATION START: Filter for archived items ---
-    const [showArchived, setShowArchived] = useState(false); // New state for filter
-    // --- MODIFICATION END ---
+    const [showArchived, setShowArchived] = useState(false);
 
     // State for sorting
     const [sortBy, setSortBy] = useState('created_at');
@@ -34,15 +35,13 @@ function ItemManagementPage({ currentUser }) {
         const timerId = setTimeout(() => {
             setDebouncedSearchTerm(searchTerm);
         }, 500);
-
-        return () => {
-            clearTimeout(timerId);
-        };
+        return () => clearTimeout(timerId);
     }, [searchTerm]);
 
     const loadItems = useCallback(async () => {
         setIsLoading(true);
         setError(null);
+        setSuccessMessage(''); // Clear success message on new load
 
         const filterPayload = {
             category: selectedCategory || null,
@@ -50,54 +49,29 @@ function ItemManagementPage({ currentUser }) {
             searchTerm: debouncedSearchTerm || null,
             sortBy: sortBy,
             sortOrder: sortOrder,
-            // --- MODIFICATION START: Pass archive filter status to backend ---
-            is_archived: showArchived ? true : false, // Send true to get only archived, false to get only active
-            // If you want to show ALL (active + archived), your backend getItems needs to handle `includeArchived: true`
-            // or you can make two separate calls. For now, this toggles between active and archived.
-            // To show active by default: is_archived: showArchived (assuming showArchived is false by default)
-            // To show only active by default, the backend getItems already filters is_archived = false by default
-            // So, if showArchived is true, we want to fetch is_archived: true
-            // If showArchived is false, we want to fetch is_archived: false (which is the default)
-            // Let's adjust the backend to accept 'is_archived' parameter explicitly
-            // and if not provided, it defaults to false.
-            // So here, we only provide it if we want to see archived.
-            // Let's refine the backend to take an 'archivedStatus' filter: 'active', 'archived', or 'all'
-            // For simplicity now: if showArchived is true, we ask for archived items. Otherwise, active.
-            // --- The backend db.getItems was already modified to handle 'is_archived' filter ---
+            is_archived: showArchived,
         };
-        if (showArchived) {
-            filterPayload.is_archived = true;
-        } else {
-            filterPayload.is_archived = false; // Explicitly ask for active items
-        }
 
-
-        console.log("ItemManagementPage: Calling electronAPI.getItems with payload:", JSON.stringify(filterPayload, null, 2));
+        // console.log("ItemManagementPage: Calling electronAPI.getItems with payload:", JSON.stringify(filterPayload, null, 2));
 
         try {
             const fetchedItemsResult = await window.electronAPI.getItems(filterPayload);
-
             if (fetchedItemsResult && fetchedItemsResult.error) {
-                console.error("ItemManagementPage: Error from backend getItems:", fetchedItemsResult.error);
                 setError(`Failed to load items: ${fetchedItemsResult.error}`);
                 setItems([]);
             } else if (fetchedItemsResult && Array.isArray(fetchedItemsResult)) {
                 setItems(fetchedItemsResult);
             } else {
-                console.warn("ItemManagementPage: getItems did not return an array or a known error structure. Received:", fetchedItemsResult);
                 setError("Received unexpected data format for items.");
                 setItems([]);
             }
         } catch (err) {
-            console.error("ItemManagementPage: Critical error loading items:", err.message, err.stack);
             setError(`Failed to load items: ${err.message}`);
             setItems([]);
         } finally {
             setIsLoading(false);
         }
-    // --- MODIFICATION START: Add showArchived to dependencies ---
     }, [selectedCategory, selectedStorage, debouncedSearchTerm, sortBy, sortOrder, showArchived]);
-    // --- MODIFICATION END ---
 
     useEffect(() => {
         loadItems();
@@ -108,48 +82,48 @@ function ItemManagementPage({ currentUser }) {
             setSortOrder(prevOrder => prevOrder === 'asc' ? 'desc' : 'asc');
         } else {
             setSortBy(newSortBy);
-            setSortOrder(newSortBy === 'quantity' ? 'asc' : 'asc');
+            setSortOrder('asc'); // Default to ascending for a new column
         }
     };
 
     const navigateToEdit = (item) => {
-        // --- MODIFICATION START: Prevent editing of archived items (optional) ---
         if (item.is_archived) {
-            alert("Archived items cannot be edited. Please unarchive it first if you need to make changes.");
+            alert("Archived items cannot be edited. Please restore it first if you need to make changes.");
             return;
         }
-        // --- MODIFICATION END ---
         navigate(`/products/${item.id}/edit`);
     }
     const navigateToAddNew = () => navigate('/products/new');
 
-    // --- MODIFICATION START: Rename handleDeleteItem to handleArchiveItem ---
     const handleArchiveItem = async (itemId, currentItemName, isCurrentlyArchived) => {
-        const actionText = isCurrentlyArchived ? 'unarchive' : 'archive';
+        const actionText = isCurrentlyArchived ? 'restore' : 'archive';
         const friendlyItemName = currentItemName || `item ID ${itemId}`;
         const confirmationMessage = `Are you sure you want to ${actionText} "${friendlyItemName}"?
     ${isCurrentlyArchived ? 'It will become active and visible in main lists again.' : 'It will be hidden from active lists but can be recovered by viewing archived items.'}`;
 
         if (window.confirm(confirmationMessage)) {
-            setError(null); // Clear previous errors
+            setError(null);
+            setSuccessMessage('');
             try {
                 let result;
+                // --- *** CORRECTED API CALLS HERE *** ---
                 if (isCurrentlyArchived) {
-                    // Call the new unarchive function
+                    if (typeof window.electronAPI.unarchiveItem !== 'function') {
+                        throw new Error("window.electronAPI.unarchiveItem is not a function.");
+                    }
                     result = await window.electronAPI.unarchiveItem(itemId);
                 } else {
-                    // 'deleteItem' now acts as 'archiveItem'
-                    result = await window.electronAPI.deleteItem(itemId);
+                    if (typeof window.electronAPI.archiveItem !== 'function') {
+                        throw new Error("window.electronAPI.archiveItem is not a function.");
+                    }
+                    result = await window.electronAPI.archiveItem(itemId); // Use archiveItem
                 }
+                // --- *** END OF CORRECTION *** ---
 
                 if (result && result.success) {
-                    console.log(result.message);
-                    // Important: Reload items to reflect the change in status (active/archived)
-                    // This will also re-render the ItemList with updated button text/icons
+                    setSuccessMessage(result.message || `Item ${actionText}d successfully!`);
                     loadItems();
-                    // Optionally show a temporary success message to the user on this page
-                    // setSuccessMessage(result.message); // You'd need a successMessage state
-                    // setTimeout(() => setSuccessMessage(''), 3000);
+                    setTimeout(() => setSuccessMessage(''), 3000);
                 } else if (result) {
                     setError(result.message || `Failed to ${actionText} item.`);
                 } else {
@@ -157,30 +131,47 @@ function ItemManagementPage({ currentUser }) {
                 }
             } catch (err) {
                 console.error(`Error during ${actionText} item:`, err);
-                setError(`Error ${actionText} item: ${err.message}`);
+                setError(`Error ${actionText}ing item: ${err.message}`);
             }
         }
     };
 
-    // --- MODIFICATION END ---
-
     const categories = ["Skincare", "Wellness", "Cosmetics", "Soap", "Beauty Soap", "Body Care", "Hair Care", "Uncategorized"];
-    const storageOptions = ["STORE", "Warehouse A", "Warehouse 200"];
+    const storageOptions = ["STORE", "Warehouse A", "Warehouse 200"]; // Example, fetch these dynamically if possible
 
     return (
         <div className="item-management-page page-container">
             <header className="page-header-alt">
                 <h1>{showArchived ? "Archived Products List" : "Products List"}</h1>
-                {/* --- MODIFICATION START: Toggle Button for Archived --- */}
-                <button
-                    className={`button ${showArchived ? 'button-primary' : 'button-secondary'}`}
-                    onClick={() => setShowArchived(!showArchived)}
-                    style={{fontSize: '0.9em', padding: '0.5em 1em'}}
-                >
-                    {showArchived ? 'View Active Items' : 'View Archived Items'}
-                </button>
-                {/* --- MODIFICATION END --- */}
+                <div className="page-header-actions"> {/* Wrapper for buttons */}
+                    {currentUser?.role === 'admin' && (
+                        <button
+                            className={`button ${showArchived ? 'button-primary' : 'button-secondary'} view-archive-btn`}
+                            onClick={() => setShowArchived(!showArchived)}
+                            // style={{fontSize: '0.9em', padding: '0.5em 1em'}} // Moved to CSS if preferred
+                        >
+                            {showArchived ? <FaUndo style={{ marginRight: '8px' }} /> : <FaArchive style={{ marginRight: '8px' }} />}
+                            {showArchived ? 'View Active Items' : 'View Archived Items'}
+                        </button>
+                    )}
+                    {!showArchived && ( // Only show "Add New Stock" when not viewing archived
+                        <button className="button button-primary add-new-btn" onClick={navigateToAddNew}>
+                            <FaPlus style={{marginRight: '8px'}} /> Add New Stock
+                        </button>
+                    )}
+                </div>
             </header>
+
+            {error && (
+                <div className="card error-message" role="alert">
+                    Error: {error}
+                </div>
+            )}
+            {successMessage && (
+                <div className="card success-message" role="status">
+                    {successMessage}
+                </div>
+            )}
 
             <div className="content-block-wrapper">
                 <div className="filter-section-alt">
@@ -219,11 +210,6 @@ function ItemManagementPage({ currentUser }) {
                 </div>
 
                 <section className="stock-list-section">
-                    {error && (
-                        <div className="card" style={{ color: 'var(--color-status-danger)', padding: '1rem', marginBottom: '1rem', border: '1px solid var(--color-status-danger)', backgroundColor: 'rgba(211, 47, 47, 0.05)' }}>
-                            Error: {error}
-                        </div>
-                    )}
                     <div className="table-container">
                         {isLoading ? (
                             <div className="loading-placeholder">Loading inventory...</div>
@@ -231,29 +217,18 @@ function ItemManagementPage({ currentUser }) {
                             <ItemList
                                 items={items}
                                 onEdit={navigateToEdit}
-                                // --- MODIFICATION START: Pass handleArchiveItem and showArchived status ---
-                                onDelete={currentUser?.role === 'admin' ? handleArchiveItem : null} // Renamed prop for clarity, or keep onDelete
+                                onArchive={currentUser?.role === 'admin' ? handleArchiveItem : null} // Correct prop name
                                 userRole={currentUser?.role}
                                 onSort={handleSort}
                                 currentSortBy={sortBy}
                                 currentSortOrder={sortOrder}
-                                viewingArchived={showArchived} // Pass this to ItemList
+                                viewingArchived={showArchived}
                                 filteredLocationName={selectedStorage || null}
-                                // --- MODIFICATION END ---
                             />
                         )}
                     </div>
                 </section>
-
-                <div className="page-actions-bar">
-                    {/* --- MODIFICATION START: Hide "Add New Stock" when viewing archived items --- */}
-                    {!showArchived && (
-                        <button className="button" onClick={navigateToAddNew}>
-                            <FaPlus style={{marginRight: '8px'}} /> Add New Stock
-                        </button>
-                    )}
-                    {/* --- MODIFICATION END --- */}
-                </div>
+                {/* "Add New Stock" button moved to header */}
             </div>
         </div>
     );

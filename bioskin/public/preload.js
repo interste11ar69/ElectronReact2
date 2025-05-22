@@ -29,10 +29,14 @@ contextBridge.exposeInMainWorld(
       console.log('[Preload] Invoking "get-item-by-id" with ID:', id);
       return ipcRenderer.invoke('get-item-by-id', id);
     },
-    createItem: (itemPayload) => {
-      console.log('[Preload] Invoking "create-item" with payload:', itemPayload);
-      return ipcRenderer.invoke('create-item', itemPayload);
-    },
+    checkSkuExists: (sku) => { // New function exposed
+          console.log('[Preload] Invoking "check-sku-exists" with SKU:', sku);
+          return ipcRenderer.invoke('check-sku-exists', sku);
+        },
+        createItem: (itemPayload) => { // itemPayload is { itemData, initialStockEntries }
+          console.log('[Preload] Invoking "create-item" with payload:', itemPayload);
+          return ipcRenderer.invoke('create-item', itemPayload); // Pass itemPayload directly
+        },
     updateItem: (itemDataWithId) => {
       console.log('[Preload] Invoking "update-item" with data:', itemDataWithId);
       return ipcRenderer.invoke('update-item', itemDataWithId);

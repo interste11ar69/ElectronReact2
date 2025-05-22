@@ -1,18 +1,18 @@
 // src/ProductFormPage.js
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { FaArrowLeft, FaThLarge, FaPlusCircle, FaTrashAlt } from 'react-icons/fa';
-import Select from 'react-select'; // For location selection in initial stock
-import './ProductFormPage.css'; // Ensure styles are appropriate
-import './BundleFormPage.css'; // Reusing some styles for dynamic rows like .component-row
+import Select from 'react-select';
+import './ProductFormPage.css';
+import './BundleFormPage.css'; // For .component-row if reused for stock entries
 import SuccessModal from './SuccessModal';
 
 function ProductFormPage({ currentUser }) {
     const { id: itemIdFromParams } = useParams();
     const navigate = useNavigate();
     const isEditing = Boolean(itemIdFromParams);
+    const skuInputRef = useRef(null);
 
-    // --- State for Master Item Details ---
     const initialItemMasterData = {
         name: '',
         sku: '',
@@ -20,38 +20,83 @@ function ProductFormPage({ currentUser }) {
         cost_price: '',
         category: '',
         variant: '',
-        status: 'Normal',
+        status: 'Normal', // Default status
     };
     const [itemMasterData, setItemMasterData] = useState(initialItemMasterData);
-
-    // --- State for Initial Stock Entries (only for new items) ---
     const [initialStockEntries, setInitialStockEntries] = useState([{ locationId: '', quantity: '', locationName: '' }]);
     const [storageLocationOptions, setStorageLocationOptions] = useState([]);
     const [isLocationsLoading, setIsLocationsLoading] = useState(false);
-
-    // --- State for Displaying Stock (only for editing items) ---
     const [displayTotalStock, setDisplayTotalStock] = useState(0);
     const [displayStockByLocation, setDisplayStockByLocation] = useState([]);
-
-    // --- General Form State ---
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [error, setError] = useState('');
+    const [skuError, setSkuError] = useState('');
+    const [isCheckingSku, setIsCheckingSku] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
     const [confirmDetails, setConfirmDetails] = useState(false);
     const [showSuccessModal, setShowSuccessModal] = useState(false);
 
     const categories = ["Beauty Soap", "Skincare", "Wellness", "Cosmetics", "Soap", "Body Care", "Hair Care", "Uncategorized"];
 
-    // Fetch storage locations for the dropdown
+    // Debounce function
+    const debounce = (func, delay) => {
+        let timeout;
+        return (...args) => {
+            clearTimeout(timeout);
+            timeout = setTimeout(() => func.apply(this, args), delay);
+        };
+    };
+
+    const checkSkuUniqueness = useCallback(
+        debounce(async (sku) => {
+            if (!sku || sku.trim() === "" || isEditing) { // Only for new items or if SKU is editable
+                setSkuError('');
+                return;
+            }
+            // For new items, or if admin is editing SKU
+            if (isEditing && currentUser?.role !== 'admin') {
+                return; // Non-admins cannot change SKU when editing
+            }
+
+            setIsCheckingSku(true);
+            setSkuError('');
+            try {
+                const result = await window.electronAPI.checkSkuExists(sku.trim());
+                if (result.exists) {
+                    // If editing, ensure it's not conflicting with another item's SKU
+                    if (isEditing && result.item && result.item.id !== parseInt(itemIdFromParams, 10)) {
+                        setSkuError(`SKU "${sku.trim()}" is already used by item "${result.item.name}".`);
+                    } else if (!isEditing) { // For new items
+                        let message = `SKU "${sku.trim()}" already exists for item "${result.item.name}".`;
+                        if (result.item.is_archived) {
+                            message += " This item is currently archived. Consider restoring it or use a different SKU.";
+                        } else {
+                            message += " Please use a unique SKU.";
+                        }
+                        setSkuError(message);
+                    }
+                } else if (result.error) {
+                    setSkuError(`Error checking SKU: ${result.error}`);
+                } else {
+                    setSkuError('');
+                }
+            } catch (e) {
+                setSkuError('Failed to verify SKU uniqueness.');
+                console.error("Error in checkSkuUniqueness:", e);
+            } finally {
+                setIsCheckingSku(false);
+            }
+        }, 750),
+    [isEditing, itemIdFromParams, currentUser?.role]);
+
+
     useEffect(() => {
         const loadStorageLocations = async () => {
             setIsLocationsLoading(true);
             try {
                 const result = await window.electronAPI.getStorageLocations();
                 if (result.success) {
-                    setStorageLocationOptions(
-                        result.locations.map(loc => ({ value: loc.id, label: loc.name }))
-                    );
+                    setStorageLocationOptions(result.locations.map(loc => ({ value: loc.id, label: loc.name })));
                 } else {
                     setError(prev => `${prev} Could not load storage locations.`.trim());
                 }
@@ -61,20 +106,17 @@ function ProductFormPage({ currentUser }) {
                 setIsLocationsLoading(false);
             }
         };
-        if (!isEditing) { // Only needed for new items
+        if (!isEditing) {
             loadStorageLocations();
         }
     }, [isEditing]);
 
-
-    // Fetch item data if editing
     useEffect(() => {
         if (isEditing && itemIdFromParams) {
             setIsLoading(true);
             const fetchItemData = async () => {
-                setError('');
+                setError(''); setSkuError('');
                 try {
-                    // getItemById should now return total_quantity and locations array
                     const item = await window.electronAPI.getItemById(itemIdFromParams);
                     if (item) {
                         setItemMasterData({
@@ -99,26 +141,32 @@ function ProductFormPage({ currentUser }) {
             };
             fetchItemData();
         } else {
-            // Reset for new item form
             setItemMasterData(initialItemMasterData);
             setInitialStockEntries([{ locationId: '', quantity: '', locationName: '' }]);
             setDisplayTotalStock(0);
             setDisplayStockByLocation([]);
-            setConfirmDetails(false); // Reset confirmation
+            setConfirmDetails(false);
             setIsLoading(false);
+            setSkuError('');
         }
     }, [itemIdFromParams, isEditing]);
 
     const handleChangeMasterData = (e) => {
         const { name, value } = e.target;
         setItemMasterData(prev => ({ ...prev, [name]: value }));
+        if (name === 'sku') {
+            // For new items, or if admin is editing SKU and it's different from original
+            // This check is primarily for real-time feedback. Submit will do a final check.
+            if (!isEditing || (isEditing && currentUser?.role === 'admin')) {
+                 checkSkuUniqueness(value);
+            }
+        }
     };
 
     const handleStatusClick = (newStatus) => {
         setItemMasterData(prev => ({ ...prev, status: newStatus }));
     };
 
-    // --- Handlers for Initial Stock Entries (for NEW items) ---
     const handleInitialStockChange = (index, field, value) => {
         const updatedEntries = [...initialStockEntries];
         if (field === 'locationId') {
@@ -138,59 +186,82 @@ function ProductFormPage({ currentUser }) {
     const removeInitialStockEntry = (index) => {
         setInitialStockEntries(initialStockEntries.filter((_, i) => i !== index));
     };
-    // --- End Handlers for Initial Stock ---
-
 
     const handleSubmit = async (e) => {
         e.preventDefault();
-        setError('');
+        setError(''); setSkuError('');
 
         if (!confirmDetails) { setError('Please confirm the details before saving.'); return; }
         if (!itemMasterData.name.trim()) { setError('Product Name is required.'); return; }
         if (!itemMasterData.category) { setError('Product Category is required.'); return; }
-        // Cost price validation (for both new and edit by admin)
         const costPrice = parseFloat(itemMasterData.cost_price);
         if (itemMasterData.cost_price === '' || isNaN(costPrice) || costPrice < 0) {
             setError('Valid Product Price is required (e.g., 60.00).'); return;
         }
 
-
-        // Validations for initial stock entries (only if !isEditing)
-        if (!isEditing) {
-            if (initialStockEntries.length === 0 || initialStockEntries.every(entry => !entry.locationId && !entry.quantity)) {
-                // Allow creating item with 0 stock if no entries are actively filled
-            } else {
+        if (!isEditing) { // Validations for initial stock entries
+            if (initialStockEntries.length > 0 && !initialStockEntries.every(entry => !entry.locationId && !entry.quantity)) {
                  for (const entry of initialStockEntries) {
-                    // If an entry has either field filled, both become required for that entry
                     if (entry.locationId || entry.quantity) {
                         if (!entry.locationId) { setError('All active initial stock entries must have a location selected.'); return; }
                         const qty = parseInt(entry.quantity, 10);
                         if (entry.quantity === '' || isNaN(qty) || qty < 0) {
-                            setError(`Valid positive quantity required for initial stock at ${entry.locationName || 'selected location'}. Use 0 if none.`); return;
+                            setError(`Valid non-negative quantity required for initial stock at ${entry.locationName || 'selected location'}. Use 0 if none.`); return;
                         }
                     }
                 }
             }
         }
 
-        // Role-based validation for SKU and Price when editing
-        if (isEditing && currentUser?.role !== 'admin') {
-            const originalItem = await window.electronAPI.getItemById(itemIdFromParams);
-            if (originalItem) {
-                if (itemMasterData.sku !== originalItem.sku) {
-                    setError("Employees cannot change SKU."); setIsSubmitting(false); return;
+        // Final SKU check before submitting, especially for new items or if admin changed SKU
+        const currentSku = itemMasterData.sku ? itemMasterData.sku.trim() : "";
+        if (currentSku !== "") { // Only check if SKU is not empty
+            // For new items, or if admin is editing and SKU has changed from original
+            let performSkuCheck = !isEditing;
+            if (isEditing && currentUser?.role === 'admin') {
+                const originalItem = await window.electronAPI.getItemById(itemIdFromParams); // Re-fetch to be sure
+                if (originalItem && originalItem.sku !== currentSku) {
+                    performSkuCheck = true;
                 }
-                if (costPrice !== parseFloat(originalItem.cost_price)) {
-                    setError("Employees cannot change Price."); setIsSubmitting(false); return;
+            }
+
+            if (performSkuCheck) {
+                setIsCheckingSku(true);
+                const skuCheckResult = await window.electronAPI.checkSkuExists(currentSku);
+                setIsCheckingSku(false);
+                if (skuCheckResult.exists) {
+                    // If editing, it's a conflict only if the existing SKU belongs to a DIFFERENT item
+                    if (isEditing && skuCheckResult.item && skuCheckResult.item.id !== parseInt(itemIdFromParams, 10)) {
+                         setSkuError(`SKU "${currentSku}" is already used by item "${skuCheckResult.item.name}".`);
+                         setError("Please resolve SKU conflict before saving.");
+                         skuInputRef.current?.focus();
+                         return;
+                    } else if (!isEditing) { // For new items, any existence is a conflict
+                        let message = `SKU "${currentSku}" already exists for item "${skuCheckResult.item.name}".`;
+                        if (skuCheckResult.item.is_archived) message += " This item is currently archived.";
+                        setSkuError(message);
+                        setError("Please resolve SKU conflict before saving.");
+                        skuInputRef.current?.focus();
+                        return;
+                    }
                 }
-            } else {
-                setError("Could not verify original item data."); setIsSubmitting(false); return;
+                if (skuCheckResult.error && !skuCheckResult.exists) { // Only error if it didn't find an existing one (which would be a different error)
+                     setError(`Error verifying SKU before save: ${skuCheckResult.error}`);
+                     return;
+                }
             }
         }
 
-        setIsSubmitting(true);
 
-        // Prepare master item data without quantity/storage for the items table
+        if (isEditing && currentUser?.role !== 'admin') {
+            const originalItem = await window.electronAPI.getItemById(itemIdFromParams);
+            if (originalItem) {
+                if (itemMasterData.sku !== originalItem.sku) { setError("Employees cannot change SKU."); setIsSubmitting(false); return; }
+                if (costPrice !== parseFloat(originalItem.cost_price)) { setError("Employees cannot change Price."); setIsSubmitting(false); return; }
+            } else { setError("Could not verify original item data."); setIsSubmitting(false); return; }
+        }
+
+        setIsSubmitting(true);
         const itemDataForTable = {
             name: itemMasterData.name.trim(),
             sku: itemMasterData.sku.trim() || null,
@@ -201,32 +272,41 @@ function ProductFormPage({ currentUser }) {
             status: itemMasterData.status,
         };
 
+        const itemPayloadForCreate = {
+            itemData: itemDataForTable,
+            initialStockEntries: []
+        };
+
+        if (!isEditing) {
+            const validInitialStock = initialStockEntries
+                .filter(entry => entry.locationId && entry.quantity !== '' && Number(entry.quantity) >= 0)
+                .map(entry => ({
+                    locationId: entry.locationId,
+                    quantity: Number(entry.quantity),
+                    locationName: entry.locationName
+                }));
+            itemPayloadForCreate.initialStockEntries = validInitialStock;
+        }
+
         try {
             let result;
             if (isEditing) {
                 itemDataForTable.id = parseInt(itemIdFromParams, 10);
-                result = await window.electronAPI.updateItem(itemDataForTable); // updateItem only updates master details
+                result = await window.electronAPI.updateItem(itemDataForTable);
             } else {
-                // Filter out empty stock entries and prepare for backend
-                const validInitialStock = initialStockEntries
-                    .filter(entry => entry.locationId && Number(entry.quantity) >= 0) // Ensure quantity is non-negative
-                    .map(entry => ({
-                        locationId: entry.locationId,
-                        quantity: Number(entry.quantity),
-                        locationName: entry.locationName // For logging on backend
-                    }));
-                // Pass itemDataForTable, validInitialStock, and user details
-                result = await window.electronAPI.createItem({
-                    itemData: itemDataForTable,
-                    initialStockEntries: validInitialStock
-                    // userId and username will be picked up by main.js from currentUser
-                });
+                result = await window.electronAPI.createItem(itemPayloadForCreate);
             }
 
             if (result && result.success) {
                 setShowSuccessModal(true);
             } else {
-                setError(result?.message || `Failed to ${isEditing ? 'update' : 'save'} item.`);
+                if (result && result.isDuplicateSku) {
+                    setSkuError(result.message);
+                    setError("Failed to save item due to SKU conflict.");
+                    skuInputRef.current?.focus();
+                } else {
+                    setError(result?.message || `Failed to ${isEditing ? 'update' : 'save'} item.`);
+                }
             }
         } catch (err) {
             setError(`An error occurred: ${err.message}.`);
@@ -244,7 +324,6 @@ function ProductFormPage({ currentUser }) {
     const disableSkuField = isEditing && !isAdmin;
     const disablePriceField = isEditing && !isAdmin;
 
-
     if (isLoading && isEditing) {
         return <div className="page-container" style={{ padding: '2rem', textAlign: 'center' }}>Loading product details...</div>;
     }
@@ -257,7 +336,7 @@ function ProductFormPage({ currentUser }) {
                     <div>
                         <h1>{isEditing ? 'EDIT PRODUCT DETAILS' : 'NEW PRODUCT'}</h1>
                         <p className="form-subtitle">
-                           {isEditing ? 'Edit product information. Stock levels are managed via Adjustments, Transfers, Sales, and Returns.' : 'Input product information and initial stock levels per location below.'}
+                           {isEditing ? 'Edit product information. Stock levels are managed via Adjustments, Transfers, and Returns.' : 'Input product information and initial stock levels per location below.'}
                         </p>
                     </div>
                 </div>
@@ -266,7 +345,6 @@ function ProductFormPage({ currentUser }) {
             {error && <div className="error-message card" role="alert">{error}</div>}
 
             <form onSubmit={handleSubmit} className="product-form card">
-                {/* --- Master Item Details --- */}
                 <div className="form-row">
                     <div className="form-group form-group-inline">
                         <label htmlFor="name">Product Name *</label>
@@ -292,14 +370,22 @@ function ProductFormPage({ currentUser }) {
                             title={disablePriceField ? "Only admins can change price." : ""} />
                      </div>
                      <div className="form-group form-group-inline">
-                         <label htmlFor="sku">SKU Code (Optional)</label>
-                         <input type="text" id="sku" name="sku" value={itemMasterData.sku} onChange={handleChangeMasterData}
-                            placeholder="e.g., BIOSKIN-KS-135" disabled={disableSkuField}
-                            title={disableSkuField ? "Only admins can change SKU." : ""} />
+                         <label htmlFor="sku">SKU Code (Optional, Must be Unique)</label>
+                         <input
+                            ref={skuInputRef}
+                            type="text" id="sku" name="sku" value={itemMasterData.sku}
+                            onChange={handleChangeMasterData}
+                            placeholder="e.g., BIOSKIN-KS-135"
+                            disabled={disableSkuField || isCheckingSku}
+                            title={disableSkuField ? "Only admins can change SKU." : (isCheckingSku ? "Verifying SKU..." : "")}
+                            aria-describedby="sku-feedback"
+                         />
+                         {isCheckingSku && <small className="form-text text-muted" style={{display: 'block', marginTop: '0.25rem'}}>Checking SKU...</small>}
+                         {skuError && <small id="sku-feedback" className="error-text-small">{skuError}</small>}
                      </div>
                 </div>
 
-                 <div className="form-row three-cols"> {/* Assuming three-cols class handles layout */}
+                 <div className="form-row three-cols">
                      <div className="form-group form-group-inline">
                          <label htmlFor="variant">Variant (Optional)</label>
                          <input type="text" id="variant" name="variant" value={itemMasterData.variant} onChange={handleChangeMasterData} placeholder="e.g., 135 grams" />
@@ -312,10 +398,10 @@ function ProductFormPage({ currentUser }) {
                              <button type="button" className={`status-btn low ${itemMasterData.status === 'Low' ? 'active' : ''}`} onClick={() => handleStatusClick('Low')}>Low</button>
                          </div>
                      </div>
-                     {isEditing && ( // Only show total stock when editing
+                     {isEditing && (
                         <div className="form-group form-group-inline">
                             <label>Total Current Stock</label>
-                            <input type="text" value={`${displayTotalStock} units (across all locations)`} readOnly className="form-control" style={{backgroundColor: '#e9ecef'}}/>
+                            <input type="text" value={`${displayTotalStock} units (all locations)`} readOnly className="form-control" style={{backgroundColor: '#e9ecef', textAlign:'right'}}/>
                         </div>
                      )}
                  </div>
@@ -325,7 +411,6 @@ function ProductFormPage({ currentUser }) {
                     <textarea id="description" name="description" value={itemMasterData.description} onChange={handleChangeMasterData} rows="3" placeholder="Product details..."></textarea>
                 </div>
 
-                {/* --- Stock Information Section --- */}
                 <hr className="section-divider" />
                 {isEditing ? (
                     <div>
@@ -338,22 +423,23 @@ function ProductFormPage({ currentUser }) {
                                         <strong>{loc.quantity} units</strong>
                                     </li>
                                 ))}
+                                {displayStockByLocation.length === 0 && <li>No stock recorded at specific locations.</li>}
                             </ul>
-                        ) : <p>No stock recorded at any location for this item.</p>}
+                        ) : <p>No stock recorded at any specific location for this item.</p>}
                         <p style={{fontSize:'0.9em', color:'var(--color-text-medium)', marginTop:'1rem'}}>
-                            To change stock levels, please use Stock Adjustments, Stock Transfers, Process Returns, or fulfill Sales Orders.
+                            To change stock levels, please use Stock Adjustments or Stock Transfers.
                         </p>
                     </div>
                 ) : (
                     <div>
-                        <h4>Initial Stock Quantities by Location *</h4>
+                        <h4>Initial Stock Quantities by Location</h4>
                         <p style={{fontSize:'0.9em', color:'var(--color-text-medium)', marginBottom:'1rem'}}>
-                            Define the starting quantity for this new product at one or more storage locations. If none, leave empty or set quantity to 0.
+                            Define starting quantity at locations. Leave empty or set quantity to 0 if none.
                         </p>
                         {initialStockEntries.map((entry, index) => (
-                            <div key={index} className="component-row form-row" style={{alignItems: 'flex-end', border:'1px dashed #ddd', padding:'1rem', marginBottom:'1rem'}}> {/* Reusing class */}
+                            <div key={index} className="component-row form-row" style={{alignItems: 'flex-end', border:'1px dashed #ddd', padding:'1rem', marginBottom:'1rem'}}>
                                 <div className="form-group" style={{flex:3}}>
-                                    <label htmlFor={`location-${index}`}>Storage Location *</label>
+                                    <label htmlFor={`location-${index}`}>Storage Location</label>
                                     <Select
                                         id={`location-${index}`}
                                         options={storageLocationOptions}
@@ -364,14 +450,14 @@ function ProductFormPage({ currentUser }) {
                                     />
                                 </div>
                                 <div className="form-group" style={{flex:1}}>
-                                    <label htmlFor={`qty-${index}`}>Quantity *</label>
+                                    <label htmlFor={`qty-${index}`}>Quantity</label>
                                     <input type="number" id={`qty-${index}`} value={entry.quantity}
                                         onChange={(e) => handleInitialStockChange(index, 'quantity', e.target.value)}
                                         min="0" placeholder="e.g., 100" className="form-control"
                                     />
                                 </div>
                                 {initialStockEntries.length > 1 && (
-                                    <div className="component-actions"> {/* Reusing class */}
+                                    <div className="component-actions">
                                         <button type="button" className="button-delete-component" onClick={() => removeInitialStockEntry(index)}><FaTrashAlt /></button>
                                     </div>
                                 )}
@@ -383,14 +469,13 @@ function ProductFormPage({ currentUser }) {
                     </div>
                 )}
 
-
                 <div className="form-footer">
                     <div className="confirm-checkbox">
                          <input type="checkbox" id="confirmDetails" name="confirmDetails" checked={confirmDetails} onChange={(e) => setConfirmDetails(e.target.checked)} />
                          <label htmlFor="confirmDetails">I confirm all details of this product are correct.</label>
                      </div>
                      <div className="form-actions">
-                         <button type="submit" className="button save-button" disabled={isSubmitting || !confirmDetails || (isLoading && isEditing)}>
+                         <button type="submit" className="button save-button" disabled={isSubmitting || !confirmDetails || (isLoading && isEditing) || isCheckingSku || !!skuError}>
                              {isSubmitting ? 'Saving...' : (isEditing ? 'Update Product Details' : 'Save New Product')}
                          </button>
                      </div>
